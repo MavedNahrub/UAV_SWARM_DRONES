@@ -1,0 +1,5 @@
+string departing_uav_id
+string reason
+---
+bool accepted
+string activated_uav_id

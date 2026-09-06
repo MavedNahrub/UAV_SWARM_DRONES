@@ -1,0 +1,13 @@
+# Default parameters for comm_gateway
+comm_gateway:
+  ros__parameters:
+    gateway_tick_hz: 10.0
+    tx_power_dbm: 20.0
+    path_loss_exponent: 3.0
+    pl0_dbm: 40.0
+    d0_m: 1.0
+    shadowing_std_db: 2.0
+    rssi_threshold_dbm: -85.0
+    max_range_m: 500.0
+    base_latency_s: 0.01
+    max_ttl: 10

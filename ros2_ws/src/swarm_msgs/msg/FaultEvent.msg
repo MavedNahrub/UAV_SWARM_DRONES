@@ -1,0 +1,4 @@
+builtin_interfaces/Time detected_stamp
+builtin_interfaces/Time recovered_stamp
+string uav_id
+string fault_type

@@ -1,0 +1,45 @@
+# Vehicle spawn poses for multi-UAV SITL
+# Positions in local ENU frame (meters), yaw in radians
+# Arranged in a line with 3m spacing for clear separation at startup
+
+spawn_poses:
+  uav_00:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_01:
+    x: 3.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_02:
+    x: 6.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_03:
+    x: 9.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_04:
+    x: 12.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_05:
+    x: 15.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_06:
+    x: 18.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0
+  uav_07:
+    x: 21.0
+    y: 0.0
+    z: 0.0
+    yaw: 0.0

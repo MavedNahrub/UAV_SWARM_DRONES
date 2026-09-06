@@ -1,0 +1,8 @@
+# Default parameters for virtual_battery
+virtual_battery:
+  ros__parameters:
+    initial_battery_frac: 1.0
+    drain_rate_survey: 0.002       # per second, surveying
+    drain_rate_relay: 0.0015       # per second, relay (hovering)
+    drain_rate_rth: 0.003          # per second, returning (higher speed)
+    drain_rate_idle: 0.0005        # per second, idle/reserve

@@ -1,0 +1,7 @@
+# Default parameters for safety_supervisor
+safety_supervisor:
+  ros__parameters:
+    tick_hz: 20.0
+    min_separation_m: 3.0
+    geofence_margin_m: 5.0
+    max_speed_mps: 15.0

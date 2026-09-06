@@ -1,0 +1,4 @@
+# Non-ROS Python dependencies for PUSHPAK UAV-X swarm
+networkx>=3.0
+pyyaml>=6.0
+jsonschema>=4.0
