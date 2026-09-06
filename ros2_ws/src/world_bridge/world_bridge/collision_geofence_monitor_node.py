@@ -12,7 +12,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import Point
-from swarm_msgs.msg import Geofence, ObstacleArray
+from swarm_msgs.msg import Geofence, ObstacleArray, CollisionEvent, GeofenceViolation
 from .geometry_utils import point_in_polygon_2d, check_obstacle_collision, compute_pairwise_separation
 
 
@@ -43,6 +43,10 @@ class CollisionGeofenceMonitorNode(Node):
             reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST, depth=1)
+        reliable = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST, depth=10)
 
         # Pose subscribers for all UAVs
         for uid in self.uav_ids:
@@ -51,6 +55,10 @@ class CollisionGeofenceMonitorNode(Node):
         # Geofence and obstacle subscribers
         self.create_subscription(Geofence, '/swarm/geofence', self._on_geofence, latched)
         self.create_subscription(ObstacleArray, '/swarm/obstacles', self._on_obstacles, latched)
+
+        # Publishers for logger
+        self.collision_pub = self.create_publisher(CollisionEvent, '/swarm/collision_events', reliable)
+        self.geofence_viol_pub = self.create_publisher(GeofenceViolation, '/swarm/geofence_violations', reliable)
 
         self.timer = self.create_timer(1.0 / max(check_rate, 0.1), self._check_safety)
         self.get_logger().info('Collision and geofence monitor started')
@@ -70,12 +78,20 @@ class CollisionGeofenceMonitorNode(Node):
         ]
 
     def _check_safety(self):
+        now = self.get_clock().now().to_msg()
         # 1. Pairwise separation check
         pairs = compute_pairwise_separation(self.uav_positions)
         for uav_a, uav_b, dist in pairs:
             if dist < self.min_sep:
                 self.get_logger().warn(
                     f'COLLISION VIOLATION: {uav_a} and {uav_b} distance {dist:.2f}m < {self.min_sep:.2f}m')
+                ev = CollisionEvent()
+                ev.stamp = now
+                ev.uav_a = uav_a
+                ev.uav_b = uav_b
+                ev.distance_m = float(dist)
+                ev.min_separation_m = float(self.min_sep)
+                self.collision_pub.publish(ev)
 
         # 2. Geofence check
         if len(self.geofence_polygon) >= 3:
@@ -83,6 +99,12 @@ class CollisionGeofenceMonitorNode(Node):
                 if not point_in_polygon_2d((pos[0], pos[1]), self.geofence_polygon):
                     self.get_logger().warn(
                         f'GEOFENCE VIOLATION: {uid} at ({pos[0]:.1f}, {pos[1]:.1f}) is outside boundary!')
+                    gv = GeofenceViolation()
+                    gv.stamp = now
+                    gv.uav_id = uid
+                    gv.position = Point(x=pos[0], y=pos[1], z=pos[2])
+                    gv.corrected_position = Point(x=pos[0], y=pos[1], z=pos[2])
+                    self.geofence_viol_pub.publish(gv)
 
         # 3. Obstacle collision check
         for uid, pos in self.uav_positions.items():

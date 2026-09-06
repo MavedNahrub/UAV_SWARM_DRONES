@@ -1,0 +1,4 @@
+builtin_interfaces/Time stamp
+string uav_id
+geometry_msgs/Point position
+geometry_msgs/Point corrected_position

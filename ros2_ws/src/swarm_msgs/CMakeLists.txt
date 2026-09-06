@@ -17,6 +17,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Geofence.msg"
   "msg/Obstacle.msg"
   "msg/ObstacleArray.msg"
+  "msg/CollisionEvent.msg"
+  "msg/GeofenceViolation.msg"
   "srv/RequestReserveSwapIn.srv"
   "srv/EstimateReachability.srv"
   "srv/GetGeofence.srv"
