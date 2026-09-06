@@ -1,0 +1,165 @@
+"""
+mission_logger_node.py — JSONL mission logger for PUSHPAK UAV-X.
+
+Per ARCHITECTURE.md Section 7:
+- Subscribes to all mission topics
+- Emits line-by-line JSONL records (tick_summary, poi_event, fault_event, relay_event,
+  collision_event, geofence_violation, mission_summary)
+"""
+
+import json
+import os
+import rclpy
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
+
+from swarm_msgs.msg import (
+    SwarmMessage, UAVState, LinkStateArray, FaultEvent,
+    RelayDecision, CollisionEvent, GeofenceViolation
+)
+from .metrics_aggregator import MetricsAggregator
+
+
+class MissionLoggerNode(Node):
+    """Central logging node writing evaluation-ready JSONL logs."""
+
+    def __init__(self):
+        super().__init__('mission_logger_node')
+
+        self.declare_parameter('uav_ids', 'uav_00,uav_01,uav_02,uav_03,uav_04,uav_05')
+        self.declare_parameter('out_path', 'logs/run.jsonl')
+        self.declare_parameter('scenario_name', 'scenario_basic')
+        self.declare_parameter('log_rate_hz', 2.0)
+
+        uav_ids_str = self.get_parameter('uav_ids').get_parameter_value().string_value
+        self.uav_ids = [x.strip() for x in uav_ids_str.split(',') if x.strip()]
+        self.out_path = self.get_parameter('out_path').get_parameter_value().string_value
+        scenario_name = self.get_parameter('scenario_name').get_parameter_value().string_value
+        log_rate = self.get_parameter('log_rate_hz').value
+
+        self.aggregator = MetricsAggregator(scenario_name=scenario_name)
+
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(os.path.abspath(self.out_path)), exist_ok=True)
+        self.log_file = open(self.out_path, 'w', encoding='utf-8')
+
+        reliable = QoSProfile(
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST, depth=50)
+        best_effort = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST, depth=1)
+
+        # UAV-specific topics
+        for uid in self.uav_ids:
+            self._setup_uav_subs(uid, reliable, best_effort)
+
+        # Global swarm topics
+        self.create_subscription(LinkStateArray, '/swarm/link_states', self._on_link_states, reliable)
+        self.create_subscription(FaultEvent, '/swarm/fault_events', self._on_fault_event, reliable)
+        self.create_subscription(RelayDecision, '/swarm/relay_decisions', self._on_relay_decision, reliable)
+        self.create_subscription(CollisionEvent, '/swarm/collision_events', self._on_collision_event, reliable)
+        self.create_subscription(GeofenceViolation, '/swarm/geofence_violations', self._on_geofence_violation, reliable)
+
+        self.start_time = self._now_sec()
+        self.current_tick = 0
+        self.timer = self.create_timer(1.0 / max(log_rate, 0.1), self._log_tick)
+
+        self.get_logger().info(f'MissionLogger started, writing to {self.out_path}')
+
+    def _now_sec(self) -> float:
+        return self.get_clock().now().nanoseconds / 1e9
+
+    def _write_record(self, record: dict):
+        self.log_file.write(json.dumps(record) + '\n')
+        self.log_file.flush()
+
+    def _setup_uav_subs(self, uid: str, reliable: QoSProfile, best_effort: QoSProfile):
+        def tx_cb(msg: SwarmMessage, u=uid):
+            stamp = msg.origin_stamp.sec + msg.origin_stamp.nanosec * 1e-9
+            self.aggregator.record_tx(msg.msg_id, stamp)
+
+        def rx_cb(msg: SwarmMessage, u=uid):
+            now = self._now_sec()
+            self.aggregator.record_rx(msg.msg_id, now)
+
+        def battery_cb(msg: UAVState, u=uid):
+            self.aggregator.record_battery(u, msg.battery_frac)
+
+        def task_cb(msg: UAVState, u=uid):
+            if msg.role != UAVState.GROUNDED:
+                self.aggregator.active_uavs.add(u)
+            if msg.assigned_poi_id:
+                # Track in-progress PoI
+                p_id = msg.assigned_poi_id
+                if p_id not in self.aggregator.poi_states:
+                    self.aggregator.poi_states[p_id] = {'status': 1, 'priority': 1, 'weight': 1.0}
+
+        self.create_subscription(SwarmMessage, f'/{uid}/comm_tx', tx_cb, reliable)
+        self.create_subscription(SwarmMessage, f'/{uid}/comm_rx', rx_cb, reliable)
+        self.create_subscription(UAVState, f'/{uid}/battery_state', battery_cb, best_effort)
+        self.create_subscription(UAVState, f'/{uid}/task_state', task_cb, reliable)
+
+    def _on_link_states(self, msg: LinkStateArray):
+        self.aggregator.connectivity_fraction = msg.connectivity_fraction
+        conn = set()
+        for l in msg.links:
+            if l.connected:
+                conn.add(l.uav_a)
+                conn.add(l.uav_b)
+        self.aggregator.connected_uavs = conn
+
+    def _on_fault_event(self, msg: FaultEvent):
+        det_s = msg.detected_stamp.sec + msg.detected_stamp.nanosec * 1e-9
+        rec_s = (msg.recovered_stamp.sec + msg.recovered_stamp.nanosec * 1e-9) if msg.recovered_stamp.sec > 0 else None
+        rec = self.aggregator.record_fault(msg.uav_id, msg.fault_type, det_s, rec_s)
+        self._write_record(rec)
+
+    def _on_relay_decision(self, msg: RelayDecision):
+        rec = self.aggregator.record_relay(
+            list(msg.relay_uav_ids),
+            msg.reallocation_triggered,
+            msg.trigger_reason
+        )
+        self._write_record(rec)
+
+    def _on_collision_event(self, msg: CollisionEvent):
+        rec = self.aggregator.record_collision(
+            msg.uav_a, msg.uav_b, msg.distance_m, msg.min_separation_m)
+        self._write_record(rec)
+
+    def _on_geofence_violation(self, msg: GeofenceViolation):
+        rec = self.aggregator.record_geofence(
+            msg.uav_id,
+            [msg.position.x, msg.position.y, msg.position.z],
+            [msg.corrected_position.x, msg.corrected_position.y, msg.corrected_position.z]
+        )
+        self._write_record(rec)
+
+    def _log_tick(self):
+        sim_time = self._now_sec() - self.start_time
+        rec = self.aggregator.generate_tick_summary(self.current_tick, sim_time)
+        self._write_record(rec)
+        self.current_tick += 1
+
+    def destroy_node(self):
+        # Write mission summary before closing
+        mission_dur = self._now_sec() - self.start_time
+        summary = self.aggregator.generate_mission_summary(mission_dur)
+        self._write_record(summary)
+        self.log_file.close()
+        super().destroy_node()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = MissionLoggerNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
