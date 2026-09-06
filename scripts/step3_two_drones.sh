@@ -29,7 +29,7 @@ tmux new-session -d -s "$SESSION" -x 200 -y 50
 
 # ── Pane 0: Drone 0 (spawns Gazebo automatically) ──
 tmux send-keys -t "$SESSION" \
-    "cd $PX4_DIR && PX4_SYS_AUTOSTART=4001 PX4_SIM_MODEL=gz_x500 PX4_GZ_MODEL_POSE='0,0' $PX4_BIN -i 0" Enter
+    "mkdir -p $PX4_DIR/build/px4_sitl_default/instance_0 && cd $PX4_DIR/build/px4_sitl_default/instance_0 && PX4_SYS_AUTOSTART=4001 PX4_SIM_MODEL=gz_x500 PX4_GZ_MODEL_POSE='0,0' $PX4_BIN -i 0" Enter
 
 echo "⏳ Waiting 15s for Gazebo + Drone 0 to start..."
 sleep 15
@@ -37,7 +37,7 @@ sleep 15
 # ── Pane 1: Drone 1 (joins existing Gazebo world) ──
 tmux split-window -h -t "$SESSION"
 tmux send-keys -t "$SESSION" \
-    "cd $PX4_DIR && PX4_SYS_AUTOSTART=4001 PX4_SIM_MODEL=gz_x500 PX4_GZ_MODEL_POSE='2,0' $PX4_BIN -i 1" Enter
+    "mkdir -p $PX4_DIR/build/px4_sitl_default/instance_1 && cd $PX4_DIR/build/px4_sitl_default/instance_1 && PX4_SYS_AUTOSTART=4001 PX4_SIM_MODEL=gz_x500 PX4_GZ_MODEL_POSE='2,0' $PX4_BIN -i 1" Enter
 
 echo "⏳ Waiting 10s for Drone 1 to spawn..."
 sleep 10

@@ -22,6 +22,7 @@ from launch.actions import (
     ExecuteProcess,
     GroupAction,
     LogInfo,
+    TimerAction,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -52,15 +53,21 @@ def launch_setup(context, *args, **kwargs):
         PythonLaunchDescriptionSource(os.path.join(launch_dir, 'xrce_agent.launch.py')),
     ))
 
-    # 3. N PX4 SITL instances into the same Gazebo world
+    # 3. N PX4 SITL instances into the same Gazebo world (staggered for reliable sensor init)
     for i in range(num_uavs):
         uav_id = f'uav_{i:02d}'
-        actions.append(IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(os.path.join(launch_dir, 'px4_vehicle.launch.py')),
-            launch_arguments={
-                'instance': str(i),
-                'uav_id': uav_id,
-            }.items(),
+        delay_s = 5.0 + i * 10.0
+        actions.append(TimerAction(
+            period=delay_s,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(os.path.join(launch_dir, 'px4_vehicle.launch.py')),
+                    launch_arguments={
+                        'instance': str(i),
+                        'uav_id': uav_id,
+                    }.items(),
+                )
+            ]
         ))
 
     # 4. Per-UAV app node stacks, namespaced

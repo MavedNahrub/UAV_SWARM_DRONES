@@ -8,11 +8,12 @@
 # Usage:
 #   ./step5_five_drones.sh          # Default 5 drones
 #   ./step5_five_drones.sh 4        # Custom count (2-10)
-###############################################################################
-set -euo pipefail
+set -eo pipefail
 
+set +u 2>/dev/null || true
 source /opt/ros/humble/setup.bash
 source ~/ros2_ws/install/setup.bash 2>/dev/null || true
+set -u
 
 PX4_DIR="${PX4_DIR:-$HOME/PX4-Autopilot}"
 PX4_BIN="$PX4_DIR/build/px4_sitl_default/bin/px4"
@@ -50,8 +51,11 @@ for i in $(seq 0 $((NUM_DRONES - 1))); do
         tmux select-layout -t "$SESSION" tiled  # Keep layout manageable
     fi
 
+    INSTANCE_DIR="$PX4_DIR/build/px4_sitl_default/instance_$i"
+    mkdir -p "$INSTANCE_DIR"
+
     tmux send-keys -t "$SESSION" \
-        "cd $PX4_DIR && PX4_SYS_AUTOSTART=4001 PX4_SIM_MODEL=gz_x500 PX4_GZ_MODEL_POSE='${X_POS},${Y_POS}' $PX4_BIN -i $i" Enter
+        "cd $INSTANCE_DIR && export HEADLESS=1 && PX4_SYS_AUTOSTART=4001 PX4_SIM_MODEL=gz_x500 PX4_GZ_MODEL_POSE='${X_POS},${Y_POS}' $PX4_BIN -i $i" Enter
 
     echo "  🚁 Drone $i spawning at position ($X_POS, $Y_POS)..."
 
@@ -76,9 +80,9 @@ sleep 5  # Give XRCE-DDS a moment to sync
 TOPIC_LIST=$(ros2 topic list 2>/dev/null || echo "")
 ALL_PASS=true
 
-# Instance 0: no namespace prefix
-if echo "$TOPIC_LIST" | grep -q "^/fmu/out/vehicle_status$"; then
-    echo "  ✅ Drone 0: /fmu/out/vehicle_status"
+# Instance 0: no namespace prefix (/fmu/out/vehicle_status or /fmu/out/vehicle_status_v1)
+if echo "$TOPIC_LIST" | grep -Eq "^/fmu/out/vehicle_status(_v1)?$"; then
+    echo "  ✅ Drone 0: /fmu/out/vehicle_status(_v1)"
 else
     echo "  ❌ Drone 0: /fmu/out/vehicle_status NOT found"
     ALL_PASS=false
@@ -87,8 +91,8 @@ fi
 # Instances 1+: /px4_N/ namespace
 for i in $(seq 1 $((NUM_DRONES - 1))); do
     EXPECTED="/px4_${i}/fmu/out/vehicle_status"
-    if echo "$TOPIC_LIST" | grep -q "^${EXPECTED}$"; then
-        echo "  ✅ Drone $i: $EXPECTED"
+    if echo "$TOPIC_LIST" | grep -Eq "^${EXPECTED}(_v1)?$"; then
+        echo "  ✅ Drone $i: ${EXPECTED}(_v1)"
     else
         echo "  ❌ Drone $i: $EXPECTED NOT found"
         ALL_PASS=false

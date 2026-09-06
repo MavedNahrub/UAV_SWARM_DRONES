@@ -34,6 +34,17 @@ def launch_setup(context, *args, **kwargs):
     px4_dir = os.path.expanduser('~/PX4-Autopilot')
     px4_bin = os.path.join(px4_dir, 'build', 'px4_sitl_default', 'bin', 'px4')
 
+    instance_dir = os.path.join(px4_dir, 'build', 'px4_sitl_default', f'instance_{instance}')
+    os.makedirs(instance_dir, exist_ok=True)
+
+    # Clean up any stale lock/socket for this instance
+    for f in [f'/tmp/px4_lock-{instance}', f'/tmp/px4-sock-{instance}']:
+        if os.path.exists(f):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
     spawn_pose_str = f'{x},{y},{z},0,0,{yaw}'
 
     actions = []
@@ -46,8 +57,9 @@ def launch_setup(context, *args, **kwargs):
             '-d',
             os.path.join(px4_dir, 'ROMFS', 'px4fmu_common'),
         ],
+        cwd=instance_dir,
         additional_env={
-            'PX4_GZ_MODEL_NAME': f'x500_{instance}',
+            'PX4_SYS_AUTOSTART': '4001',
             'PX4_GZ_MODEL_POSE': spawn_pose_str,
             'PX4_SIM_MODEL': 'gz_x500',
             'PX4_GZ_WORLD': 'default',

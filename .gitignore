@@ -9,3 +9,10 @@ ros2_ws/log/
 __pycache__/
 *.pyc
 .vscode/
+*.bson
+dataman
+ros2_ws/dataman
+ros2_ws/etc/
+ros2_ws/parameters.bson*
+ros2_ws/test_data/
+ros2_ws/logs/

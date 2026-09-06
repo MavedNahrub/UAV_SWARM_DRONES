@@ -5,20 +5,24 @@ gazebo_world.launch.py — Launch Gazebo Harmonic with the disaster_area world.
 import os
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 
 
-def generate_launch_description():
+def launch_setup(context, *args, **kwargs):
+    headless = LaunchConfiguration('headless').perform(context).lower() == 'true'
     pkg_dir = get_package_share_directory('mission_bringup')
     world_file = os.path.join(pkg_dir, 'worlds', 'disaster_area.sdf')
 
-    return LaunchDescription([
-        DeclareLaunchArgument('headless', default_value='false'),
+    cmd = ['gz', 'sim', '-r']
+    if headless:
+        cmd.append('-s')
+    cmd.append(world_file)
 
+    return [
         ExecuteProcess(
-            cmd=['gz', 'sim', '-r', world_file],
+            cmd=cmd,
             output='screen',
             additional_env={
                 'GZ_SIM_RESOURCE_PATH': os.path.expanduser(
@@ -26,5 +30,12 @@ def generate_launch_description():
                     '~/PX4-Autopilot/Tools/simulation/gz/worlds'
                 ),
             },
-        ),
+        )
+    ]
+
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument('headless', default_value='false'),
+        OpaqueFunction(function=launch_setup),
     ])

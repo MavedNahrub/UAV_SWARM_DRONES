@@ -4,7 +4,7 @@
   Flat terrain representing a disaster survey area with geofence boundary markers.
 -->
 <sdf version="1.9">
-  <world name="disaster_area">
+  <world name="default">
 
     <!-- Physics -->
     <physics name="1ms" type="ode">
