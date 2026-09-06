@@ -1,0 +1,94 @@
+# scenario_stress_full.yaml — Comprehensive stress scenario
+# 8 UAVs, 8 PoIs, obstacle field, failure injection, critical interrupt, and battery RTH
+
+mission:
+  name: "stress_full"
+  duration_s: 400
+  seed: 303
+
+uavs:
+  count: 8
+  roles:
+    uav_00: SURVEYOR
+    uav_01: SURVEYOR
+    uav_02: SURVEYOR
+    uav_03: SURVEYOR
+    uav_04: SURVEYOR
+    uav_05: RELAY
+    uav_06: RESERVE
+    uav_07: RESERVE
+
+gcs:
+  position:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+
+geofence:
+  polygon:
+    - {x: -600.0, y: -600.0, z: 0.0}
+    - {x:  600.0, y: -600.0, z: 0.0}
+    - {x:  600.0, y:  600.0, z: 0.0}
+    - {x: -600.0, y:  600.0, z: 0.0}
+  max_altitude_m: 120.0
+
+obstacles:
+  - center: {x: 100.0, y: 50.0, z: 5.0}
+    radius_m: 15.0
+  - center: {x: -150.0, y: 150.0, z: 5.0}
+    radius_m: 20.0
+  - center: {x: 200.0, y: -100.0, z: 5.0}
+    radius_m: 12.0
+
+pois:
+  - poi_id: "poi_01"
+    position: {x: 80.0, y: 120.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 25.0
+
+  - poi_id: "poi_02"
+    position: {x: 250.0, y: -80.0, z: 0.0}
+    priority: 2
+    survey_duration_s: 20.0
+
+  - poi_id: "poi_03"
+    position: {x: -250.0, y: 200.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 25.0
+
+  - poi_id: "poi_04"
+    position: {x: 180.0, y: 350.0, z: 0.0}
+    priority: 2
+    survey_duration_s: 30.0
+
+  - poi_id: "poi_05"
+    position: {x: -300.0, y: -200.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 20.0
+
+  - poi_id: "poi_06"
+    position: {x: 350.0, y: 150.0, z: 0.0}
+    priority: 2
+    survey_duration_s: 25.0
+
+  - poi_id: "poi_07"
+    position: {x: -120.0, y: -350.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 20.0
+
+  - poi_id: "poi_08"
+    position: {x: 0.0, y: 400.0, z: 0.0}
+    priority: 2
+    survey_duration_s: 30.0
+
+fault_injection:
+  - time_s: 80.0
+    target_uav: "uav_02"
+    fault_type: "UAV_FAILURE"
+
+priority_interrupts:
+  - time_s: 50.0
+    poi_id: "poi_critical_alert"
+    position: {x: 220.0, y: 200.0, z: 0.0}
+    priority: 3  # CRITICAL
+    survey_duration_s: 15.0

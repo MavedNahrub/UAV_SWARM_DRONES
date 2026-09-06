@@ -1,0 +1,63 @@
+# scenario_failure_injection.yaml — Fault injection scenario
+# Injects hard failure on uav_01 to trigger reserve swap-in and dynamic CBBA rebidding
+
+mission:
+  name: "failure_injection"
+  duration_s: 300
+  seed: 101
+
+uavs:
+  count: 6
+  roles:
+    uav_00: SURVEYOR
+    uav_01: SURVEYOR
+    uav_02: SURVEYOR
+    uav_03: SURVEYOR
+    uav_04: RELAY
+    uav_05: RESERVE
+
+gcs:
+  position:
+    x: 0.0
+    y: 0.0
+    z: 0.0
+
+geofence:
+  polygon:
+    - {x: -500.0, y: -500.0, z: 0.0}
+    - {x:  500.0, y: -500.0, z: 0.0}
+    - {x:  500.0, y:  500.0, z: 0.0}
+    - {x: -500.0, y:  500.0, z: 0.0}
+  max_altitude_m: 120.0
+
+obstacles:
+  - center: {x: 100.0, y: 50.0, z: 5.0}
+    radius_m: 15.0
+
+pois:
+  - poi_id: "poi_01"
+    position: {x: 80.0, y: 120.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 30.0
+
+  - poi_id: "poi_02"
+    position: {x: 200.0, y: -50.0, z: 0.0}
+    priority: 2
+    survey_duration_s: 25.0
+
+  - poi_id: "poi_03"
+    position: {x: -100.0, y: 200.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 20.0
+
+  - poi_id: "poi_04"
+    position: {x: 150.0, y: 300.0, z: 0.0}
+    priority: 2
+    survey_duration_s: 35.0
+
+fault_injection:
+  - time_s: 60.0
+    target_uav: "uav_01"
+    fault_type: "UAV_FAILURE"
+
+priority_interrupts: []
