@@ -29,12 +29,12 @@ class BatteryRTHNode(Node):
         super().__init__('battery_rth_node')
 
         self.declare_parameter('uav_id', '')
-        self.declare_parameter('critical_frac', 0.20)
+        self.declare_parameter('critical_frac', 0.30)
         self.declare_parameter('cruise_speed_mps', 10.0)
-        self.declare_parameter('drain_rate_per_sec', 0.001)
+        self.declare_parameter('drain_rate_per_sec', 0.003)   # must match virtual_battery_node
         self.declare_parameter('gcs_x', 0.0)
         self.declare_parameter('gcs_y', 0.0)
-        self.declare_parameter('gcs_z', 20.0)
+        self.declare_parameter('gcs_z', 0.0)   # ground level — drone must descend and land
 
         self.uav_id = self.get_parameter('uav_id').get_parameter_value().string_value
         self.critical_frac = self.get_parameter('critical_frac').value
@@ -50,6 +50,9 @@ class BatteryRTHNode(Node):
         self.battery_frac = 1.0
         self.rth_triggered = False
         self.swap_requested = False
+        self.landing = False       # True once near GCS horizontally, descending
+        self.grounded = False      # True once z < 1m, fully stopped
+        self._log_tick = 0  # for periodic battery logging
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -99,6 +102,22 @@ class BatteryRTHNode(Node):
         return response
 
     def _rth_check_tick(self):
+        self._log_tick += 1
+        # Log battery level every 5s (10 ticks @ 2Hz) for evidence capture
+        if self._log_tick % 10 == 0:
+            dist_to_gcs = math.sqrt(
+                (self.current_pos[0] - self.gcs_pos[0])**2 +
+                (self.current_pos[1] - self.gcs_pos[1])**2 +
+                (self.current_pos[2] - self.gcs_pos[2])**2)
+            self.get_logger().info(
+                f'[{self.uav_id}] BAT={self.battery_frac:.4f} '
+                f'pos=({self.current_pos[0]:.1f},{self.current_pos[1]:.1f},{self.current_pos[2]:.1f}) '
+                f'dist_to_gcs={dist_to_gcs:.1f}m rth={self.rth_triggered}')
+
+        # Don't check RTH until drone is actually airborne (z > 1m)
+        if self.current_pos[2] < 1.0:
+            return
+
         if not self.rth_triggered:
             trigger = should_trigger_rth(
                 current_pos=self.current_pos,
@@ -132,19 +151,55 @@ class BatteryRTHNode(Node):
                     self.swap_requested = True
 
         if self.rth_triggered:
-            # Command velocity towards GCS
+            # Phase 1: Fly toward GCS at cruise altitude until close horizontally
             dx = self.gcs_pos[0] - self.current_pos[0]
             dy = self.gcs_pos[1] - self.current_pos[1]
-            dz = self.gcs_pos[2] - self.current_pos[2]
-            dist = math.sqrt(dx*dx + dy*dy + dz*dz)
+            horiz_dist = math.sqrt(dx*dx + dy*dy)
 
             cmd = Twist()
-            if dist > 2.0:
+
+            if self.grounded:
+                # Phase 3: On the ground — publish zero velocity, do nothing
+                self.cmd_vel_pub.publish(cmd)
+                return
+
+            if horiz_dist > 5.0 and not self.landing:
+                # Phase 1: cruise toward GCS at current altitude
+                dz = 20.0 - self.current_pos[2]  # maintain 20m until close
+                dist = math.sqrt(dx*dx + dy*dy + dz*dz)
                 scale = min(self.cruise_speed / max(dist, 0.1), 1.0)
                 cmd.linear.x = dx * scale
                 cmd.linear.y = dy * scale
                 cmd.linear.z = dz * scale
-            self.cmd_vel_pub.publish(cmd)
+                self.cmd_vel_pub.publish(cmd)
+                if self._log_tick % 10 == 0:
+                    self.get_logger().info(
+                        f'[{self.uav_id}] RTH CRUISE: horiz_dist={horiz_dist:.1f}m '
+                        f'pos=({self.current_pos[0]:.1f},{self.current_pos[1]:.1f},{self.current_pos[2]:.1f})')
+            else:
+                # Phase 2: Above GCS — descend to land
+                if not self.landing:
+                    self.landing = True
+                    self.get_logger().warn(
+                        f'[{self.uav_id}] RTH LANDING: Reached GCS area, descending...')
+
+                if self.current_pos[2] < 1.0:
+                    # Phase 3: Grounded
+                    self.grounded = True
+                    self.get_logger().warn(
+                        f'[{self.uav_id}] RTH COMPLETE: Landed at '
+                        f'({self.current_pos[0]:.1f},{self.current_pos[1]:.1f},{self.current_pos[2]:.1f})')
+                    self.cmd_vel_pub.publish(cmd)  # zero velocity
+                    return
+
+                # Descend at -2 m/s, hold position horizontally
+                cmd.linear.x = dx * 0.5  # gentle horizontal correction
+                cmd.linear.y = dy * 0.5
+                cmd.linear.z = -2.0       # descend steadily
+                self.cmd_vel_pub.publish(cmd)
+                if self._log_tick % 10 == 0:
+                    self.get_logger().info(
+                        f'[{self.uav_id}] RTH DESCENDING: z={self.current_pos[2]:.1f}m')
 
 
 def main(args=None):

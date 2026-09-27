@@ -27,7 +27,7 @@ class SafetySupervisorNode(Node):
 
         self.declare_parameter('uav_ids', 'uav_00,uav_01,uav_02,uav_03,uav_04,uav_05')
         self.declare_parameter('min_separation_m', 8.0)
-        self.declare_parameter('obstacle_safety_margin_m', 5.0)
+        self.declare_parameter('obstacle_safety_margin_m', 12.0)
         self.declare_parameter('max_speed_mps', 12.0)
         self.declare_parameter('supervisor_rate_hz', 20.0)
 
@@ -42,6 +42,7 @@ class SafetySupervisorNode(Node):
         self.proposed_vels = {}
         self.geofence_poly = []
         self.obstacles = []
+        self.pose_received = {}
 
         best_effort = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -74,11 +75,14 @@ class SafetySupervisorNode(Node):
         self.get_logger().info(f'SafetySupervisor initialized at {rate_hz} Hz for UAVs: {self.uav_ids}')
 
     def _setup_uav_topics(self, uid: str, best_effort: QoSProfile, reliable: QoSProfile):
-        self.positions[uid] = (0.0, 0.0, 0.0)
+        idx = int(uid.split('_')[1]) if '_' in uid and uid.split('_')[1].isdigit() else 0
+        self.positions[uid] = (float(idx * 3.0), 0.0, 0.0)
         self.proposed_vels[uid] = (0.0, 0.0, 0.0)
+        self.pose_received[uid] = False
 
         def pose_cb(msg: Point, u=uid):
             self.positions[u] = (msg.x, msg.y, msg.z)
+            self.pose_received[u] = True
 
         def vel_cb(msg: Twist, u=uid):
             self.proposed_vels[u] = (msg.linear.x, msg.linear.y, msg.linear.z)
@@ -100,6 +104,10 @@ class SafetySupervisorNode(Node):
         now = self.get_clock().now().to_msg()
 
         for uid in self.uav_ids:
+            # Skip UAVs that haven't reported a real position yet
+            if not self.pose_received.get(uid, False):
+                continue
+
             cur_pos = self.positions.get(uid, (0.0, 0.0, 0.0))
             prop_vel = self.proposed_vels.get(uid, (0.0, 0.0, 0.0))
 

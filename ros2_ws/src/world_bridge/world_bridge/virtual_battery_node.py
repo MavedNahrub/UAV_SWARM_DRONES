@@ -24,8 +24,8 @@ class VirtualBatteryNode(Node):
 
         self.declare_parameter('uav_id', '')
         self.declare_parameter('initial_battery_frac', 1.0)
-        self.declare_parameter('base_drain_per_sec', 0.001)
-        self.declare_parameter('update_hz', 2.0)
+        self.declare_parameter('base_drain_per_sec', 0.003)   # demo: RTH in ~120-150s airborne
+        self.declare_parameter('update_hz', 1.0)
 
         self.uav_id = self.get_parameter('uav_id').get_parameter_value().string_value
         initial_battery = self.get_parameter('initial_battery_frac').value
@@ -56,14 +56,11 @@ class VirtualBatteryNode(Node):
         self.battery_pub = self.create_publisher(UAVState, 'battery_state', best_effort)
 
         # Timer
-        self.last_time = self._now_sec()
         period = 1.0 / max(self.update_hz, 0.1)
         self.timer = self.create_timer(period, self._tick)
 
         self.get_logger().info(f'Virtual battery node started for {self.uav_id}')
 
-    def _now_sec(self) -> float:
-        return self.get_clock().now().nanoseconds / 1e9
 
     def _on_pose(self, msg: Point):
         self.current_pos = msg
@@ -72,9 +69,9 @@ class VirtualBatteryNode(Node):
         self.current_role = msg.role
 
     def _tick(self):
-        now = self._now_sec()
-        dt = now - self.last_time
-        self.last_time = now
+        # Use fixed dt = timer period. This is robust against ROS clock jumps
+        # that were causing instant battery drain (dt=30s on first tick).
+        dt = 1.0 / max(self.update_hz, 0.1)
 
         b_frac = self.model.step(dt, self.current_role)
 

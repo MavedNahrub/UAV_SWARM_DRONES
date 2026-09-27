@@ -1,9 +1,18 @@
-# scenario_basic.yaml — Basic 6-UAV swarm scenario
-# 4 surveyors + 1 relay + 1 reserve, 5 PoIs, no fault injection
+# scenario_basic.yaml — Nominal 6-UAV swarm mission in disaster area
+#
+# 4 surveyors + 1 relay + 1 reserve, 5 PoIs across 3 range zones.
+#
+# PoI range zones (comm_gateway max_range=300m from GCS at origin):
+#   NEAR  (<180m)  poi_01 @ 145m — direct comms always OK
+#   MID   (180-300m) poi_02 @ 206m, poi_03 @ 224m — relay beneficial
+#   FAR   (>300m)  poi_04 @ 335m, poi_05 @ 250m(diag) — relay REQUIRED
+#
+# Obstacles match disaster_area.sdf geometry.
+# safety_supervisor uses these radii for APF repulsion.
 
 mission:
   name: "basic_survey"
-  duration_s: 300
+  duration_s: 600
   seed: 42
 
 uavs:
@@ -26,37 +35,57 @@ geofence:
   polygon:
     - {x: -500.0, y: -500.0, z: 0.0}
     - {x:  500.0, y: -500.0, z: 0.0}
-    - {x:  500.0, y:  500.0, z: 0.0}
-    - {x: -500.0, y:  500.0, z: 0.0}
+    - {x:  500.0,  y: 500.0, z: 0.0}
+    - {x: -500.0,  y: 500.0, z: 0.0}
   max_altitude_m: 120.0
 
+# Obstacles matching disaster_area.sdf
+# Centers at z=0 (ground), radii = horizontal footprint.
+# With drones at z=20m, 3D sphere boundary_dist = sqrt(r^2+400)-r
+# ensuring drones flying above buildings aren't falsely blocked.
 obstacles:
-  - center: {x: 100.0, y: 50.0, z: 5.0}
-    radius_m: 15.0
+  - center: {x: 120.0, y: 80.0,  z: 0.0}
+    radius_m: 22.0   # collapsed apartment — 40×35m footprint
+
+  - center: {x: -90.0, y: 140.0, z: 0.0}
+    radius_m: 20.0   # office ruin — 38×28m footprint
+
+  - center: {x: 200.0, y: -60.0, z: 0.0}
+    radius_m: 18.0   # debris field A — 35×25m cluster
+
+  - center: {x: -160.0, y: -80.0, z: 0.0}
+    radius_m: 28.0   # landslide — 52×40m, boulders extend to edges
+
+  - center: {x: 50.0, y: -30.0,  z: 20.0}
+    radius_m: 6.0    # comms tower — at z=20m (drone alt!), shaft r=3m
+
 
 pois:
+  # NEAR ZONE — uav directly within GCS comms range
   - poi_id: "poi_01"
-    position: {x: 80.0, y: 120.0, z: 0.0}
+    position: {x: 80.0, y: 120.0, z: 0.0}   # 145m from GCS, near apt ruin
+    priority: 2  # URGENT — survivor signal near building
+    survey_duration_s: 25.0
+
+  # MID ZONE — marginal direct link, relay helps
+  - poi_id: "poi_02"
+    position: {x: 200.0, y: -50.0, z: 0.0}  # 206m from GCS, near debris field
     priority: 1  # ROUTINE
     survey_duration_s: 30.0
 
-  - poi_id: "poi_02"
-    position: {x: 200.0, y: -50.0, z: 0.0}
-    priority: 1  # ROUTINE
-    survey_duration_s: 25.0
-
   - poi_id: "poi_03"
-    position: {x: -100.0, y: 200.0, z: 0.0}
+    position: {x: -100.0, y: 200.0, z: 0.0} # 224m from GCS, past office ruin
     priority: 2  # URGENT
     survey_duration_s: 20.0
 
+  # FAR ZONE — requires relay chain through mesh
   - poi_id: "poi_04"
-    position: {x: 150.0, y: 300.0, z: 0.0}
+    position: {x: 150.0, y: 300.0, z: 0.0}  # 335m from GCS, past overpass
     priority: 1  # ROUTINE
     survey_duration_s: 35.0
 
   - poi_id: "poi_05"
-    position: {x: -200.0, y: -150.0, z: 0.0}
+    position: {x: -200.0, y: -150.0, z: 0.0} # 250m SW, past landslide
     priority: 2  # URGENT
     survey_duration_s: 15.0
 

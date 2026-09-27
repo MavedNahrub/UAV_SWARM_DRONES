@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PUSHPAK UAV-X — Live Swarm Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #060b14;
+    --bg2: #0d1520;
+    --bg3: #111d2e;
+    --card: rgba(255,255,255,0.035);
+    --card-hover: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.07);
+    --accent: #00d4ff;
+    --accent2: #7c3aed;
+    --green: #22d3a0;
+    --yellow: #f5c518;
+    --red: #ff4757;
+    --orange: #ff6b35;
+    --gray: #94a3b8;
+    --text: #e2e8f0;
+    --dim: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; }
+
+  /* ─── Layout ─── */
+  #app { display: grid; grid-template-rows: 52px 1fr; grid-template-columns: 1fr; height: 100vh; }
+  #header { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; background: var(--bg2); border-bottom: 1px solid var(--border); z-index: 10; }
+  #body { display: grid; grid-template-columns: 220px 1fr 260px; grid-template-rows: 1fr 200px; gap: 0; overflow: hidden; }
+
+  /* ─── Header ─── */
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #00d4ff, #7c3aed); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .logo-text { font-weight: 700; font-size: 15px; letter-spacing: 0.5px; }
+  .logo-sub { font-size: 10px; color: var(--dim); font-weight: 400; }
+  .hstatus { display: flex; align-items: center; gap: 16px; font-size: 12px; }
+  .pill { display: flex; align-items: center; gap: 5px; background: var(--bg3); border-radius: 20px; padding: 4px 10px; border: 1px solid var(--border); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot.green { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s ease-in-out infinite; }
+  .dot.red { background: var(--red); }
+  .dot.yellow { background: var(--yellow); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* ─── Left Panel (UAV list) ─── */
+  #left { grid-row: 1/3; background: var(--bg2); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px 8px; display: flex; flex-direction: column; gap: 8px; }
+  .uav-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; cursor: default; transition: background 0.2s; position: relative; overflow: hidden; }
+  .uav-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; border-radius: 3px 0 0 3px; }
+  .uav-card.SURVEYOR::before { background: var(--green); }
+  .uav-card.RELAY::before { background: var(--accent); }
+  .uav-card.RTH::before { background: var(--yellow); }
+  .uav-card.RESERVE::before { background: var(--gray); }
+  .uav-card.GROUNDED::before { background: var(--red); }
+  .uav-card.IDLE::before { background: var(--dim); }
+  .uav-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .uav-id { font-weight: 600; font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+  .role-badge { font-size: 9px; font-weight: 600; padding: 2px 6px; border-radius: 10px; letter-spacing: 0.5px; }
+  .role-badge.SURVEYOR { background: rgba(34,211,160,0.15); color: var(--green); border: 1px solid rgba(34,211,160,0.3); }
+  .role-badge.RELAY { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); }
+  .role-badge.RTH { background: rgba(245,197,24,0.15); color: var(--yellow); border: 1px solid rgba(245,197,24,0.3); }
+  .role-badge.RESERVE { background: rgba(148,163,184,0.1); color: var(--gray); border: 1px solid rgba(148,163,184,0.2); }
+  .role-badge.GROUNDED { background: rgba(255,71,87,0.15); color: var(--red); border: 1px solid rgba(255,71,87,0.3); }
+  .role-badge.IDLE { background: rgba(100,116,139,0.15); color: var(--dim); border: 1px solid rgba(100,116,139,0.2); }
+  .batt-row { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .batt-bar { flex: 1; height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .batt-fill { height: 100%; border-radius: 3px; transition: width 0.5s, background 0.5s; }
+  .batt-label { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--dim); min-width: 32px; text-align: right; }
+  .pos-info { font-size: 10px; color: var(--dim); font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
+  .poi-info { font-size: 10px; color: var(--accent); margin-top: 2px; font-weight: 500; }
+  .section-title { font-size: 9px; font-weight: 600; letter-spacing: 1.5px; color: var(--dim); text-transform: uppercase; padding: 4px 4px 2px; }
+
+  /* ─── Centre (Canvas map) ─── */
+  #centre { grid-row: 1; background: var(--bg); position: relative; overflow: hidden; }
+  #mapCanvas { display: block; }
+  .map-overlay { position: absolute; top: 10px; left: 10px; font-size: 10px; color: var(--dim); font-family: 'JetBrains Mono', monospace; background: rgba(0,0,0,0.5); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border); }
+  .legend { position: absolute; bottom: 10px; left: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--dim); }
+  .leg-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ─── Bottom centre (Log stream) ─── */
+  #logpanel { grid-row: 2; grid-column: 2; background: var(--bg2); border-top: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+  .log-header { padding: 6px 12px; font-size: 10px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--border); }
+  #logStream { flex: 1; overflow-y: auto; padding: 6px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .log-line { font-size: 10px; font-family: 'JetBrains Mono', monospace; padding: 2px 4px; border-radius: 3px; line-height: 1.4; }
+  .log-line.tick_summary { color: #4b5563; }
+  .log-line.poi_event { color: var(--green); }
+  .log-line.fault_event { color: var(--red); font-weight: 600; }
+  .log-line.relay_event { color: var(--accent); }
+  .log-line.mission_summary { color: var(--yellow); font-weight: 700; background: rgba(245,197,24,0.08); }
+  .log-line.other { color: var(--dim); }
+
+  /* ─── Right Panel ─── */
+  #right { grid-row: 1/3; background: var(--bg2); border-left: 1px solid var(--border); overflow-y: auto; padding: 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* ─── Stats cards ─── */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .stat-label { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.8px; }
+  .stat-val { font-size: 20px; font-weight: 700; font-family: 'JetBrains Mono', monospace; color: var(--text); margin-top: 1px; }
+  .stat-val.green { color: var(--green); }
+  .stat-val.red { color: var(--red); }
+  .stat-val.yellow { color: var(--yellow); }
+  .stat-val.accent { color: var(--accent); }
+
+  /* ─── Progress bar ─── */
+  .prog-section { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .prog-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+  .prog-item { margin-bottom: 6px; }
+  .prog-label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 3px; }
+  .prog-track { height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+  .prog-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+
+  /* ─── Fault log ─── */
+  .fault-log { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .fault-title { font-size: 10px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+  .fault-item { display: flex; align-items: flex-start; gap: 6px; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .fault-item:last-child { border-bottom: none; }
+  .fault-icon { font-size: 11px; margin-top: 1px; flex-shrink: 0; }
+  .fault-text { font-size: 10px; line-height: 1.4; }
+  .fault-uav { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+  .fault-type.LINK_LOSS { color: var(--yellow); }
+  .fault-type.BATTERY_CRITICAL { color: var(--red); }
+  .fault-type.UAV_FAILURE { color: var(--red); }
+  .fault-time { font-size: 9px; color: var(--dim); }
+
+  /* ─── Connectivity ring ─── */
+  .ring-wrap { display: flex; justify-content: center; align-items: center; padding: 8px 0; }
+  #connRing { transition: stroke-dashoffset 0.5s ease; }
+
+  /* ─── PDR meters ─── */
+  .metrics-row { display: flex; gap: 6px; }
+  .mini-metric { flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px; text-align: center; }
+  .mini-metric-val { font-size: 16px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+  .mini-metric-lbl { font-size: 9px; color: var(--dim); margin-top: 2px; }
+
+  /* ─── Scrollbar ─── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+  /* ─── Connection status bar ─── */
+  #statusBar { position: fixed; bottom: 0; left: 0; right: 0; height: 22px; background: rgba(255,71,87,0.9); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; z-index: 100; transition: opacity 0.3s; }
+  #statusBar.hidden { opacity: 0; pointer-events: none; }
+
+  /* ─── Scenario badge ─── */
+  #scenarioBadge { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--accent); background: rgba(0,212,255,0.1); border: 1px solid rgba(0,212,255,0.2); padding: 3px 9px; border-radius: 20px; }
+
+  .no-data { color: var(--dim); font-size: 11px; text-align: center; padding: 12px 0; }
+
+  @keyframes fadeIn { from { opacity:0; transform:translateY(-3px); } to { opacity:1; transform:translateY(0); } }
+  .new { animation: fadeIn 0.3s ease forwards; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- HEADER -->
+  <div id="header">
+    <div class="logo">
+      <div class="logo-icon">🚁</div>
+      <div>
+        <div class="logo-text">PUSHPAK UAV-X</div>
+        <div class="logo-sub">Resilient BVLOS Swarm — Live Dashboard</div>
+      </div>
+    </div>
+    <span id="scenarioBadge">–</span>
+    <div class="hstatus">
+      <div class="pill"><div class="dot green" id="wsDot"></div><span id="wsLabel">Connecting…</span></div>
+      <div class="pill" id="simTimePill">⏱ 0.0 s</div>
+      <div class="pill" id="activePill">✈ 0 active</div>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div id="body">
+
+    <!-- LEFT: UAV list -->
+    <div id="left">
+      <div class="section-title">Fleet Status</div>
+      <div id="uavList"></div>
+    </div>
+
+    <!-- CENTRE: Map canvas -->
+    <div id="centre">
+      <canvas id="mapCanvas"></canvas>
+      <div class="map-overlay" id="mapInfo">Waiting for data…</div>
+      <div class="legend">
+        <div class="leg-item"><div class="leg-dot" style="background:#22d3a0"></div>Surveyor</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#00d4ff"></div>Relay</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#f5c518"></div>RTH</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#ff4757"></div>Grounded</div>
+        <div class="leg-item"><div class="leg-dot" style="background:#94a3b8"></div>Reserve</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Stats panel -->
+    <div id="right">
+      <div class="section-title">Mission KPIs</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Surveyed</div><div class="stat-val green" id="sSurveyed">0</div></div>
+        <div class="stat-card"><div class="stat-label">In Progress</div><div class="stat-val accent" id="sInProg">0</div></div>
+        <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-val" id="sPending">0</div></div>
+        <div class="stat-card"><div class="stat-label">Expired</div><div class="stat-val red" id="sExpired">0</div></div>
+      </div>
+
+      <!-- Connectivity Ring -->
+      <div class="prog-section">
+        <div class="prog-title">Mesh Connectivity</div>
+        <div class="ring-wrap">
+          <svg width="100" height="100" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="10"/>
+            <circle id="connRing" cx="50" cy="50" r="40" fill="none" stroke="#00d4ff"
+                    stroke-width="10" stroke-linecap="round"
+                    stroke-dasharray="251.2" stroke-dashoffset="251.2"
+                    transform="rotate(-90 50 50)"/>
+            <text x="50" y="45" text-anchor="middle" font-size="18" font-weight="700" fill="#e2e8f0" font-family="JetBrains Mono, monospace" id="connPct">0%</text>
+            <text x="50" y="60" text-anchor="middle" font-size="9" fill="#64748b" font-family="Inter, sans-serif">CONN</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- PDR & Latency -->
+      <div class="metrics-row">
+        <div class="mini-metric">
+          <div class="mini-metric-val" id="mPDR" style="color:#22d3a0">–</div>
+          <div class="mini-metric-lbl">PDR</div>
+        </div>
+        <div class="mini-metric">
+          <div class="mini-metric-val" id="mSent" style="color:#94a3b8">–</div>
+          <div class="mini-metric-lbl">Sent</div>
+        </div>
+        <div class="mini-metric">
+          <div class="mini-metric-val" id="mDrop" style="color:#ff4757">–</div>
+          <div class="mini-metric-lbl">Dropped</div>
+        </div>
+      </div>
+
+      <!-- Battery levels -->
+      <div class="prog-section">
+        <div class="prog-title">Swarm Battery</div>
+        <div id="battGrid"></div>
+      </div>
+
+      <!-- Fault events -->
+      <div class="fault-log">
+        <div class="fault-title">⚠ Fault Events</div>
+        <div id="faultList"><div class="no-data">No faults yet</div></div>
+      </div>
+
+      <!-- Relay log -->
+      <div class="fault-log">
+        <div class="fault-title">📡 Relay Decisions</div>
+        <div id="relayList"><div class="no-data">No relay events yet</div></div>
+      </div>
+    </div>
+
+    <!-- BOTTOM: Log stream -->
+    <div id="logpanel">
+      <div class="log-header">📋 Live Mission Log — <span id="logCount">0</span> records</div>
+      <div id="logStream"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="statusBar">⚡ WebSocket disconnected — retrying…</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const WS_HOST = location.hostname || 'localhost';
+const WS_URL = `ws://${WS_HOST}:8765`;
+const ROLE_COLORS = {
+  SURVEYOR: '#22d3a0', RELAY: '#00d4ff', RTH: '#f5c518',
+  RESERVE: '#94a3b8', GROUNDED: '#ff4757', IDLE: '#4b5563'
+};
+
+// ── State ────────────────────────────────────────────────────────────────────
+let lastData = null;
+let ws = null;
+let canvas, ctx;
+let animFrame;
+
+// ── Map world bounds (auto-detect from geofence) ──────────────────────────
+let worldBounds = { minX: -550, maxX: 550, minY: -550, maxY: 550 };
+let uavTrails = {}; // uavId -> [{x,y}]
+const TRAIL_LEN = 40;
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  canvas = document.getElementById('mapCanvas');
+  ctx = canvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  connectWS();
+  requestAnimationFrame(renderLoop);
+});
+
+function resizeCanvas() {
+  const c = document.getElementById('centre');
+  canvas.width = c.offsetWidth;
+  canvas.height = c.offsetHeight;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    document.getElementById('wsDot').className = 'dot green';
+    document.getElementById('wsLabel').textContent = 'Live';
+    document.getElementById('statusBar').classList.add('hidden');
+  };
+  ws.onmessage = (ev) => {
+    try { lastData = JSON.parse(ev.data); updateUI(lastData); } catch {}
+  };
+  ws.onerror = ws.onclose = () => {
+    document.getElementById('wsDot').className = 'dot red';
+    document.getElementById('wsLabel').textContent = 'Reconnecting…';
+    document.getElementById('statusBar').classList.remove('hidden');
+    setTimeout(connectWS, 2000);
+  };
+}
+
+// ── UI Updates ────────────────────────────────────────────────────────────────
+function updateUI(d) {
+  const m = d.mission || {};
+
+  // header pills
+  document.getElementById('simTimePill').textContent = `⏱ ${(m.sim_time_s || 0).toFixed(1)} s`;
+  document.getElementById('activePill').textContent = `✈ ${m.active_uavs || 0} active`;
+
+  // KPI stats
+  document.getElementById('sSurveyed').textContent = m.poi_surveyed ?? 0;
+  document.getElementById('sInProg').textContent = m.poi_in_progress ?? 0;
+  document.getElementById('sPending').textContent = m.poi_pending ?? 0;
+  document.getElementById('sExpired').textContent = m.poi_expired ?? 0;
+
+  // Connectivity ring
+  const cf = Math.min(1, Math.max(0, d.connectivity || m.connectivity || 0));
+  const circ = 251.2;
+  document.getElementById('connRing').style.strokeDashoffset = circ * (1 - cf);
+  const pct = Math.round(cf * 100);
+  document.getElementById('connPct').textContent = pct + '%';
+  document.getElementById('connRing').style.stroke = cf > 0.6 ? '#22d3a0' : cf > 0.3 ? '#f5c518' : '#ff4757';
+
+  // PDR
+  const sent = m.messages_sent || 0;
+  const delivered = m.messages_delivered || 0;
+  const dropped = m.messages_dropped || 0;
+  const pdr = sent > 0 ? (delivered / (sent + dropped)) : null;
+  document.getElementById('mPDR').textContent = pdr !== null ? (pdr * 100).toFixed(1) + '%' : '–';
+  document.getElementById('mPDR').style.color = pdr === null ? '#94a3b8' : pdr > 0.8 ? '#22d3a0' : pdr > 0.5 ? '#f5c518' : '#ff4757';
+  document.getElementById('mSent').textContent = sent > 999 ? (sent / 1000).toFixed(1) + 'k' : sent;
+  document.getElementById('mDrop').textContent = dropped;
+
+  // UAV list
+  updateUAVList(d.uavs || []);
+
+  // Battery grid
+  updateBattGrid(d.uavs || []);
+
+  // Fault log
+  updateFaultLog(d.fault_log || []);
+
+  // Relay log
+  updateRelayLog(d.relay_log || []);
+
+  // Mission log
+  updateLogStream(d.log_tail || []);
+
+  // Geofence world bounds
+  if (d.geofence && d.geofence.length > 2) {
+    const xs = d.geofence.map(p => p.x);
+    const ys = d.geofence.map(p => p.y);
+    worldBounds = {
+      minX: Math.min(...xs) - 30,
+      maxX: Math.max(...xs) + 30,
+      minY: Math.min(...ys) - 30,
+      maxY: Math.max(...ys) + 30,
+    };
+  }
+
+  // Update UAV trails
+  (d.uavs || []).forEach(u => {
+    if (!uavTrails[u.id]) uavTrails[u.id] = [];
+    if ((Math.abs(u.x) > 0.01 || Math.abs(u.y) > 0.01) && u.z > 0.5) {
+      uavTrails[u.id].push({ x: u.x, y: u.y });
+      if (uavTrails[u.id].length > TRAIL_LEN) uavTrails[u.id].shift();
+    }
+  });
+
+  // Map info overlay
+  document.getElementById('mapInfo').textContent =
+    `World: ${worldBounds.minX.toFixed(0)}↔${worldBounds.maxX.toFixed(0)}m  |  Ticks: ${m.sim_time_s ? (m.sim_time_s * 2).toFixed(0) : '–'}`;
+
+  // Scenario badge (from log)
+  const summRec = (d.log_tail || []).find(r => r.type === 'mission_summary');
+  if (summRec) document.getElementById('scenarioBadge').textContent = summRec.scenario_name || 'unknown';
+  const tickRec = (d.log_tail || []).find(r => r.type === 'tick_summary');
+  if (tickRec && tickRec.scenario_name) document.getElementById('scenarioBadge').textContent = tickRec.scenario_name;
+}
+
+function updateUAVList(uavs) {
+  const el = document.getElementById('uavList');
+  uavs.sort((a, b) => a.id.localeCompare(b.id));
+  el.innerHTML = '';
+  uavs.forEach(u => {
+    const role = u.role || 'IDLE';
+    const batt = u.battery ?? 1.0;
+    const battPct = Math.round(batt * 100);
+    const battColor = batt > 0.5 ? '#22d3a0' : batt > 0.2 ? '#f5c518' : '#ff4757';
+    const div = document.createElement('div');
+    div.className = `uav-card ${role}`;
+    div.innerHTML = `
+      <div class="uav-header">
+        <span class="uav-id">${u.id}</span>
+        <span class="role-badge ${role}">${role}</span>
+      </div>
+      <div class="batt-row">
+        <div class="batt-bar"><div class="batt-fill" style="width:${battPct}%;background:${battColor}"></div></div>
+        <div class="batt-label">${battPct}%</div>
+      </div>
+      <div class="pos-info">xyz: ${u.x?.toFixed(1) ?? 0}, ${u.y?.toFixed(1) ?? 0}, ${u.z?.toFixed(1) ?? 0}</div>
+      ${u.assigned_poi ? `<div class="poi-info">📍 ${u.assigned_poi}</div>` : ''}
+      ${u.bundle?.length ? `<div class="pos-info">bundle: [${u.bundle.join(', ')}]</div>` : ''}
+    `;
+    el.appendChild(div);
+  });
+}
+
+function updateBattGrid(uavs) {
+  const el = document.getElementById('battGrid');
+  el.innerHTML = '';
+  uavs.sort((a, b) => a.id.localeCompare(b.id)).forEach(u => {
+    const batt = u.battery ?? 1.0;
+    const battPct = Math.round(batt * 100);
+    const battColor = batt > 0.5 ? '#22d3a0' : batt > 0.2 ? '#f5c518' : '#ff4757';
+    const d = document.createElement('div');
+    d.className = 'prog-item';
+    d.innerHTML = `
+      <div class="prog-label">
+        <span style="font-size:10px;font-family:'JetBrains Mono',monospace">${u.id}</span>
+        <span style="font-size:10px;color:${battColor};font-family:'JetBrains Mono',monospace">${battPct}%</span>
+      </div>
+      <div class="prog-track"><div class="prog-fill" style="width:${battPct}%;background:${battColor}"></div></div>
+    `;
+    el.appendChild(d);
+  });
+}
+
+function updateFaultLog(faults) {
+  const el = document.getElementById('faultList');
+  if (!faults.length) { el.innerHTML = '<div class="no-data">No faults yet</div>'; return; }
+  el.innerHTML = '';
+  faults.slice(0, 8).forEach((f, i) => {
+    const icon = f.type === 'BATTERY_CRITICAL' ? '🔋' : f.type === 'LINK_LOSS' ? '📶' : '💥';
+    const d = document.createElement('div');
+    d.className = 'fault-item' + (i === 0 ? ' new' : '');
+    d.innerHTML = `
+      <span class="fault-icon">${icon}</span>
+      <div class="fault-text">
+        <span class="fault-uav">${f.uav}</span>
+        <span class="fault-type ${f.type}" style="margin-left:4px;font-size:9px"> ${f.type}</span>
+        ${f.recovered ? `<span style="color:#22d3a0;font-size:9px"> ✓ +${f.recovery_s}s</span>` : ''}
+        <div class="fault-time">${f.ts}</div>
+      </div>
+    `;
+    el.appendChild(d);
+  });
+}
+
+function updateRelayLog(relays) {
+  const el = document.getElementById('relayList');
+  if (!relays.length) { el.innerHTML = '<div class="no-data">No relay events yet</div>'; return; }
+  el.innerHTML = '';
+  relays.slice(0, 5).forEach((r, i) => {
+    const d = document.createElement('div');
+    d.className = 'fault-item' + (i === 0 ? ' new' : '');
+    d.innerHTML = `
+      <span class="fault-icon">📡</span>
+      <div class="fault-text">
+        <span style="color:#00d4ff;font-size:10px">[${r.relays?.join(', ') || 'none'}]</span>
+        <span style="color:#64748b;font-size:9px"> ${r.trigger}</span>
+        <div class="fault-time">${r.ts}</div>
+      </div>
+    `;
+    el.appendChild(d);
+  });
+}
+
+let logCount = 0;
+function updateLogStream(logLines) {
+  const el = document.getElementById('logStream');
+  logCount = Math.max(logCount, logLines.length);
+  document.getElementById('logCount').textContent = logCount;
+  el.innerHTML = '';
+  logLines.slice(0, 30).forEach(rec => {
+    const d = document.createElement('div');
+    const t = rec.type || 'other';
+    d.className = `log-line ${t}`;
+    let text = '';
+    if (t === 'tick_summary') {
+      text = `[t=${rec.sim_time_s?.toFixed(1) ?? '?'}s] tick=${rec.tick} uavs=${rec.num_active_uavs} conn=${(rec.connectivity_fraction*100).toFixed(0)}% pois_done=${rec.poi_surveyed} batt_min=${(rec.battery_min_frac*100).toFixed(0)}%`;
+    } else if (t === 'poi_event') {
+      text = `✓ POI ${rec.event}: ${rec.poi_id}  prio=${rec.priority} (w${rec.priority_weight})`;
+    } else if (t === 'fault_event') {
+      text = `⚠ FAULT ${rec.fault_type} on ${rec.uav_id}  recovered=${rec.recovery_time_s > 0 ? rec.recovery_time_s.toFixed(1) + 's' : 'no'}`;
+    } else if (t === 'relay_event') {
+      text = `📡 RELAY [${rec.relay_uavs?.join(',')}]  trigger=${rec.trigger_reason}`;
+    } else if (t === 'mission_summary') {
+      text = `🏁 MISSION COMPLETE  rate=${(rec.completion_rate*100).toFixed(0)}% score=${rec.priority_weighted_score} pdr=${(rec.pdr*100).toFixed(0)}%`;
+    } else {
+      text = JSON.stringify(rec).substring(0, 120);
+    }
+    d.textContent = text;
+    el.appendChild(d);
+  });
+}
+
+// ── Canvas Rendering ─────────────────────────────────────────────────────────
+function renderLoop() {
+  drawMap();
+  animFrame = requestAnimationFrame(renderLoop);
+}
+
+function worldToCanvas(wx, wy) {
+  const w = canvas.width, h = canvas.height;
+  const pad = 30;
+  const dx = worldBounds.maxX - worldBounds.minX;
+  const dy = worldBounds.maxY - worldBounds.minY;
+  const scaleX = (w - pad * 2) / dx;
+  const scaleY = (h - pad * 2) / dy;
+  const scale = Math.min(scaleX, scaleY);
+  const offX = (w - dx * scale) / 2;
+  const offY = (h - dy * scale) / 2;
+  return {
+    x: offX + (wx - worldBounds.minX) * scale,
+    y: h - (offY + (wy - worldBounds.minY) * scale),  // flip Y (ENU)
+    scale,
+  };
+}
+
+const _time = { v: 0 };
+function drawMap() {
+  if (!ctx) return;
+  _time.v += 0.02;
+  const W = canvas.width, H = canvas.height;
+
+  // Background
+  ctx.fillStyle = '#060b14';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+  ctx.lineWidth = 1;
+  const gridStep = 100; // meters
+  for (let gx = Math.ceil(worldBounds.minX / gridStep) * gridStep; gx <= worldBounds.maxX; gx += gridStep) {
+    const p = worldToCanvas(gx, worldBounds.minY);
+    const p2 = worldToCanvas(gx, worldBounds.maxY);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  }
+  for (let gy = Math.ceil(worldBounds.minY / gridStep) * gridStep; gy <= worldBounds.maxY; gy += gridStep) {
+    const p = worldToCanvas(worldBounds.minX, gy);
+    const p2 = worldToCanvas(worldBounds.maxX, gy);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  }
+
+  if (!lastData) return;
+  const d = lastData;
+
+  // ── Geofence ──
+  if (d.geofence && d.geofence.length > 2) {
+    ctx.beginPath();
+    d.geofence.forEach((pt, i) => {
+      const p = worldToCanvas(pt.x, pt.y);
+      i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(255,71,87,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([6, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(255,71,87,0.03)';
+    ctx.fill();
+  }
+
+  // ── Obstacles ──
+  (d.obstacles || []).forEach(obs => {
+    const p = worldToCanvas(obs.cx, obs.cy);
+    const r = obs.r * p.scale;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,107,53,0.2)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,107,53,0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // Pulsing danger ring
+    const pulse = 0.5 + 0.5 * Math.sin(_time.v * 2);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r + 4 + pulse * 6, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,107,53,${0.15 * pulse})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
+
+  // ── RF Mesh links ──
+  (d.links || []).forEach(l => {
+    const uavMap = {};
+    (d.uavs || []).forEach(u => { uavMap[u.id] = u; });
+    const a = uavMap[l.a], b = uavMap[l.b];
+    if (!a || !b || !l.connected) return;
+    const pa = worldToCanvas(a.x, a.y);
+    const pb = worldToCanvas(b.x, b.y);
+    const isRelay = l.relay;
+    ctx.beginPath();
+    ctx.moveTo(pa.x, pa.y);
+    ctx.lineTo(pb.x, pb.y);
+    ctx.strokeStyle = isRelay ? 'rgba(0,212,255,0.6)' : 'rgba(100,116,139,0.3)';
+    ctx.lineWidth = isRelay ? 2 : 1;
+    ctx.setLineDash(isRelay ? [] : [4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // ── UAV Trails ──
+  (d.uavs || []).forEach(u => {
+    const trail = uavTrails[u.id] || [];
+    if (trail.length < 2) return;
+    ctx.beginPath();
+    trail.forEach((pt, i) => {
+      const p = worldToCanvas(pt.x, pt.y);
+      i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+    });
+    const color = ROLE_COLORS[u.role] || '#666';
+    ctx.strokeStyle = color + '55';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // ── UAVs ──
+  (d.uavs || []).forEach(u => {
+    const p = worldToCanvas(u.x, u.y);
+    const role = u.role || 'IDLE';
+    const color = ROLE_COLORS[role] || '#666';
+    const r = 7;
+    const isActive = u.z > 1 && role !== 'GROUNDED';
+
+    // Glow
+    if (isActive) {
+      const grd = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r * 3);
+      grd.addColorStop(0, color + '60');
+      grd.addColorStop(1, color + '00');
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r * 3, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+
+    // Pulsing outer ring for active UAVs
+    if (isActive && (role === 'SURVEYOR' || role === 'RELAY')) {
+      const pulse = 0.5 + 0.5 * Math.sin(_time.v * 3 + u.id.charCodeAt(4));
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r + 3 + pulse * 4, 0, Math.PI * 2);
+      ctx.strokeStyle = color + Math.round(pulse * 255).toString(16).padStart(2, '0');
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // UAV body
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+
+    // Rotor blades (small cross)
+    if (isActive) {
+      const spin = _time.v * 8;
+      [0, Math.PI/2].forEach(offset => {
+        const angle = spin + offset;
+        ctx.beginPath();
+        ctx.moveTo(p.x + Math.cos(angle) * (r + 4), p.y + Math.sin(angle) * (r + 4));
+        ctx.lineTo(p.x + Math.cos(angle + Math.PI) * (r + 4), p.y + Math.sin(angle + Math.PI) * (r + 4));
+        ctx.strokeStyle = color + 'aa';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      });
+    }
+
+    // Altitude indicator (small vertical bar)
+    const altH = Math.min(20, (u.z ?? 0) * 0.4);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(p.x + r + 3, p.y - altH, 3, altH);
+    ctx.fillStyle = color + 'cc';
+    ctx.fillRect(p.x + r + 3, p.y - altH, 3, altH);
+
+    // Label
+    ctx.font = '600 10px Inter';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(u.id.replace('uav_', ''), p.x, p.y - r - 5);
+
+    // PoI line
+    if (u.assigned_poi) {
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = color + '44';
+      ctx.lineWidth = 1;
+      // find poi pos from log? just draw label
+      ctx.setLineDash([]);
+    }
+  });
+
+  // ── GCS marker ──
+  const gcs = worldToCanvas(0, 0);
+  ctx.beginPath();
+  ctx.rect(gcs.x - 6, gcs.y - 6, 12, 12);
+  ctx.fillStyle = 'rgba(124,58,237,0.7)';
+  ctx.fill();
+  ctx.strokeStyle = '#7c3aed';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.font = '10px Inter';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#c4b5fd';
+  ctx.fillText('GCS', gcs.x, gcs.y - 10);
+}
+</script>
+</body>
+</html>

@@ -1,9 +1,14 @@
-# scenario_priority_interrupt.yaml — Dynamic priority alert scenario
-# Injects CRITICAL POI_ALERT mid-mission to test partial bundle re-auction
+# scenario_priority_interrupt.yaml — Dynamic CRITICAL PoI mid-mission
+#
+# At t=60s a CRITICAL survivor signal appears at (280, -120) —
+# FAR zone SE, past the debris field and near the factory.
+# Distance from GCS ≈ 305m → relay REQUIRED.
+# CBBA must abort lower-priority bundles and re-bid to dispatch
+# nearest surveyor toward the critical site ASAP.
 
 mission:
   name: "priority_interrupt"
-  duration_s: 300
+  duration_s: 600
   seed: 202
 
 uavs:
@@ -26,35 +31,64 @@ geofence:
   polygon:
     - {x: -500.0, y: -500.0, z: 0.0}
     - {x:  500.0, y: -500.0, z: 0.0}
-    - {x:  500.0, y:  500.0, z: 0.0}
-    - {x: -500.0, y:  500.0, z: 0.0}
+    - {x:  500.0,  y: 500.0, z: 0.0}
+    - {x: -500.0,  y: 500.0, z: 0.0}
   max_altitude_m: 120.0
 
 obstacles:
-  - center: {x: 100.0, y: 50.0, z: 5.0}
-    radius_m: 15.0
+  - center: {x: 120.0, y: 80.0,  z: 0.0}
+    radius_m: 22.0
+
+  - center: {x: -90.0, y: 140.0, z: 0.0}
+    radius_m: 20.0
+
+  - center: {x: 200.0, y: -60.0, z: 0.0}
+    radius_m: 18.0   # debris field — CRITICAL site is just past this
+
+  - center: {x: -160.0, y: -80.0, z: 0.0}
+    radius_m: 28.0
+
+  - center: {x: 50.0, y: -30.0,  z: 20.0}
+    radius_m: 6.0
+
+  - center: {x: 310.0, y: 120.0, z: 0.0}
+    radius_m: 25.0   # factory — near the critical interrupt position
 
 pois:
+  # Initial routine PoIs — spread so surveyors are mid-flight when interrupt fires
   - poi_id: "poi_01"
     position: {x: 80.0, y: 120.0, z: 0.0}
     priority: 1
-    survey_duration_s: 30.0
+    survey_duration_s: 40.0
 
   - poi_id: "poi_02"
-    position: {x: 200.0, y: -50.0, z: 0.0}
-    priority: 1
-    survey_duration_s: 25.0
-
-  - poi_id: "poi_03"
     position: {x: -100.0, y: 200.0, z: 0.0}
     priority: 1
-    survey_duration_s: 20.0
+    survey_duration_s: 35.0
+
+  - poi_id: "poi_03"
+    position: {x: 200.0, y: -50.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 35.0
+
+  - poi_id: "poi_04"
+    position: {x: 150.0, y: 300.0, z: 0.0}
+    priority: 1
+    survey_duration_s: 40.0
 
 fault_injection: []
 
 priority_interrupts:
-  - time_s: 45.0
-    poi_id: "poi_critical_99"
-    position: {x: 120.0, y: 180.0, z: 0.0}
-    priority: 3  # CRITICAL
-    survey_duration_s: 15.0
+  # CRITICAL signal at t=60s — FAR zone SE, requires relay chain
+  - time_s: 60.0
+    poi_id: "poi_critical_survivor"
+    position: {x: 280.0, y: -120.0, z: 0.0}  # 305m from GCS, past debris field
+    priority: 3   # CRITICAL — highest priority, CBBA must interrupt current bundles
+    survey_duration_s: 10.0
+
+  # Second interrupt at t=180s — another critical find in the NW far zone
+  - time_s: 180.0
+    poi_id: "poi_critical_nw"
+    position: {x: -280.0, y: 240.0, z: 0.0}  # 369m from GCS
+    priority: 3
+    survey_duration_s: 12.0

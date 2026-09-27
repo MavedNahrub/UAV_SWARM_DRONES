@@ -22,6 +22,7 @@ setup(
             'virtual_battery_node = world_bridge.virtual_battery_node:main',
             'geofence_obstacle_publisher_node = world_bridge.geofence_obstacle_publisher_node:main',
             'collision_geofence_monitor_node = world_bridge.collision_geofence_monitor_node:main',
+            'px4_vehicle_bridge_node = world_bridge.px4_vehicle_bridge_node:main',
         ],
     },
 )

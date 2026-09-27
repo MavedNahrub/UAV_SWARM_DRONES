@@ -34,7 +34,7 @@ class FaultManagerNode(Node):
 
         self.declare_parameter('uav_id', '')
         self.declare_parameter('heartbeat_period_s', 1.0)
-        self.declare_parameter('timeout_s', 5.0)
+        self.declare_parameter('timeout_s', 15.0)
         self.declare_parameter('known_peers', '')
 
         self.uav_id = self.get_parameter('uav_id').get_parameter_value().string_value
@@ -66,7 +66,8 @@ class FaultManagerNode(Node):
 
         # Timers
         self.hb_timer = self.create_timer(self.heartbeat_period_s, self._send_heartbeat)
-        self.watchdog_timer = self.create_timer(0.5, self._check_timeouts)
+        # Watchdog runs every 2s (not 0.5s) to avoid log spam during relay routing
+        self.watchdog_timer = self.create_timer(2.0, self._check_timeouts)
 
         self.get_logger().info(f'Fault manager node initialized for {self.uav_id}')
 

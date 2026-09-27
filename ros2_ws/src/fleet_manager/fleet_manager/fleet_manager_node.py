@@ -8,6 +8,7 @@ Per ARCHITECTURE.md Section 6.4:
 - Activates reserve UAV when active surveyor/relay experiences failure or RTH
 """
 
+import os
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
@@ -33,6 +34,20 @@ class FleetManagerNode(Node):
         all_ids = [x.strip() for x in uav_ids_str.split(',') if x.strip()]
         reserves = [x.strip() for x in reserve_str.split(',') if x.strip()]
         active = [x for x in all_ids if x not in reserves]
+
+        scenario_path = self.get_parameter('scenario').get_parameter_value().string_value
+        if scenario_path and os.path.exists(scenario_path):
+            try:
+                import yaml
+                with open(scenario_path, 'r') as f:
+                    sdata = yaml.safe_load(f) or {}
+                roles = sdata.get('uavs', {}).get('roles', {})
+                if roles:
+                    reserves = [uid for uid, role in roles.items() if role == 'RESERVE']
+                    active = [uid for uid, role in roles.items() if role != 'RESERVE']
+                    all_ids = list(roles.keys())
+            except Exception as e:
+                self.get_logger().warn(f'Could not parse scenario roles: {e}')
 
         self.pool = FleetPool(active_uav_ids=active, reserve_uav_ids=reserves)
 

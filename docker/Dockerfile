@@ -49,7 +49,12 @@ RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
 RUN pip3 install --no-cache-dir \
     empy==3.3.4 \
     pyros-genmsg \
-    setuptools
+    setuptools \
+    networkx \
+    pyyaml \
+    jsonschema \
+    scipy \
+    numpy
 
 # ─── PX4 build dependencies (from ubuntu.sh, pre-seeded) ────────────────────
 RUN apt-get update && apt-get install -y \
@@ -110,6 +115,7 @@ RUN mkdir -p /home/$USERNAME/ros2_ws/src \
 # ─── Shell setup ─────────────────────────────────────────────────────────────
 RUN echo 'source /opt/ros/humble/setup.bash' >> ~/.bashrc \
     && echo 'source ~/ros2_ws/install/setup.bash 2>/dev/null' >> ~/.bashrc \
+    && echo 'source ~/uav_swarm/ros2_ws/install/setup.bash 2>/dev/null' >> ~/.bashrc \
     && echo 'export GZ_SIM_RESOURCE_PATH=~/PX4-Autopilot/Tools/simulation/gz/models:~/PX4-Autopilot/Tools/simulation/gz/worlds' >> ~/.bashrc
 
 # ─── NVIDIA runtime support ─────────────────────────────────────────────────

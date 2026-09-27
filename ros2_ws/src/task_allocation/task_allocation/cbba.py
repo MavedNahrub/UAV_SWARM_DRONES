@@ -262,6 +262,15 @@ class CBBAAgent:
             if self.winning_bids[task_id].agent_id == self.agent_id:
                 del self.winning_bids[task_id]
 
+    def release_all_tasks(self):
+        """Release every task in this agent's bundle (e.g., RTH departure)."""
+        for task_id in list(self.bundle):
+            if task_id in self.winning_bids:
+                if self.winning_bids[task_id].agent_id == self.agent_id:
+                    del self.winning_bids[task_id]
+        self.bundle.clear()
+        self.path.clear()
+
     def handle_priority_interrupt(self, new_task: TaskInfo,
                                   current_time: float) -> List[BidInfo]:
         """
@@ -301,9 +310,10 @@ class CBBAAgent:
             else:
                 return []  # Can't fit the new task
 
-        # Add new task to bundle
-        self.bundle.append(new_task.task_id)
-        self.path.append(new_task.task_id)
+        # Add new task to bundle (avoid duplicates)
+        if new_task.task_id not in self.bundle:
+            self.bundle.append(new_task.task_id)
+            self.path.append(new_task.task_id)
         self.winning_bids[new_task.task_id] = bid
 
         return [bid]

@@ -16,3 +16,10 @@ ros2_ws/etc/
 ros2_ws/parameters.bson*
 ros2_ws/test_data/
 ros2_ws/logs/
+.px4_src/
+.px4_logs/
+docker_logs_check/
+etc
+test_data
+eeprom/
+ros2_ws/eeprom/

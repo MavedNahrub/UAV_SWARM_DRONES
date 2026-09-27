@@ -29,6 +29,14 @@ def launch_setup(context, *args, **kwargs):
                     '~/PX4-Autopilot/Tools/simulation/gz/models:'
                     '~/PX4-Autopilot/Tools/simulation/gz/worlds'
                 ),
+                'GZ_SIM_SYSTEM_PLUGIN_PATH': os.path.expanduser(
+                    '~/PX4-Autopilot/build/px4_sitl_default/src/modules/simulation/gz_plugins'
+                ),
+                'GZ_SIM_SERVER_CONFIG_PATH': os.path.expanduser(
+                    '~/PX4-Autopilot/src/modules/simulation/gz_bridge/server.config'
+                ),
+                'LIBGL_ALWAYS_SOFTWARE': '1',
+                'QT_X11_NO_MITSHM': '1',
             },
         )
     ]

@@ -34,13 +34,14 @@ def launch_setup(context, *args, **kwargs):
     num_uavs = int(LaunchConfiguration('num_uavs').perform(context))
     scenario = LaunchConfiguration('scenario').perform(context)
     headless = LaunchConfiguration('headless').perform(context).lower() == 'true'
+    log_path = LaunchConfiguration('log_path').perform(context)
 
     pkg_dir = get_package_share_directory('mission_bringup')
     launch_dir = os.path.join(pkg_dir, 'launch')
 
     actions = []
 
-    actions.append(LogInfo(msg=f'Launching PUSHPAK UAV-X swarm: {num_uavs} UAVs, scenario={scenario}'))
+    actions.append(LogInfo(msg=f'Launching PUSHPAK UAV-X swarm: {num_uavs} UAVs, scenario={scenario}, log={log_path}'))
 
     # 1. Gazebo Harmonic, once, with the mission world
     actions.append(IncludeLaunchDescription(
@@ -56,7 +57,7 @@ def launch_setup(context, *args, **kwargs):
     # 3. N PX4 SITL instances into the same Gazebo world (staggered for reliable sensor init)
     for i in range(num_uavs):
         uav_id = f'uav_{i:02d}'
-        delay_s = 5.0 + i * 10.0
+        delay_s = 5.0 + i * 5.0
         actions.append(TimerAction(
             period=delay_s,
             actions=[
@@ -80,6 +81,7 @@ def launch_setup(context, *args, **kwargs):
                 launch_arguments={
                     'uav_id': uav_id,
                     'px4_instance': str(i),
+                    'scenario': scenario,
                 }.items(),
             ),
         ]))
@@ -91,6 +93,7 @@ def launch_setup(context, *args, **kwargs):
         launch_arguments={
             'uav_ids': uav_ids,
             'scenario': scenario,
+            'log_path': log_path,
         }.items(),
     ))
 
@@ -105,5 +108,7 @@ def generate_launch_description():
                               description='Path to scenario YAML file'),
         DeclareLaunchArgument('headless', default_value='false',
                               description='Run Gazebo in headless mode'),
+        DeclareLaunchArgument('log_path', default_value='/tmp/log_basic.jsonl',
+                              description='Path to output JSONL log file'),
         OpaqueFunction(function=launch_setup),
     ])

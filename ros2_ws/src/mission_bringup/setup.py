@@ -21,6 +21,9 @@ setup(
     maintainer='devamburhan',
     maintainer_email='devamburhan@example.com',
     description='Launch files and scenario configs for PUSHPAK UAV-X swarm',
-    license='MIT',
-    entry_points={},
+    entry_points={
+        'console_scripts': [
+            'scenario_orchestrator_node = mission_bringup.scenario_orchestrator_node:main',
+        ],
+    },
 )

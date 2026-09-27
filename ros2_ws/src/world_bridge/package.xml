@@ -9,6 +9,7 @@
   <depend>rclpy</depend>
   <depend>geometry_msgs</depend>
   <depend>swarm_msgs</depend>
+  <depend>px4_msgs</depend>
   <depend>builtin_interfaces</depend>
   <depend>python3-yaml</depend>
 

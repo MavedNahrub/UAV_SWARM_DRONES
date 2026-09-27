@@ -70,19 +70,24 @@ class GeofenceObstaclePublisherNode(Node):
                 with open(path, 'r') as f:
                     data = yaml.safe_load(f) or {}
 
+                def _parse_pt(p):
+                    if isinstance(p, dict):
+                        return Point(x=float(p.get('x', 0.0)), y=float(p.get('y', 0.0)), z=float(p.get('z', 0.0)))
+                    elif isinstance(p, (list, tuple)):
+                        z = float(p[2]) if len(p) > 2 else 0.0
+                        return Point(x=float(p[0]), y=float(p[1]), z=z)
+                    return Point(x=0.0, y=0.0, z=0.0)
+
                 geo_data = data.get('geofence', {}).get('polygon', [])
                 if geo_data:
-                    self.geofence_msg.polygon = [
-                        Point(x=float(p[0]), y=float(p[1]), z=0.0) for p in geo_data
-                    ]
+                    self.geofence_msg.polygon = [_parse_pt(p) for p in geo_data]
 
                 obs_data = data.get('obstacles', [])
                 obs_list = []
                 for o in obs_data:
                     obs = Obstacle()
-                    c = o.get('center', [0.0, 0.0, 0.0])
-                    obs.center = Point(x=float(c[0]), y=float(c[1]), z=float(c[2]) if len(c) > 2 else 0.0)
-                    obs.radius_m = float(o.get('radius', 10.0))
+                    obs.center = _parse_pt(o.get('center', {}))
+                    obs.radius_m = float(o.get('radius_m', o.get('radius', 10.0)))
                     obs_list.append(obs)
                 self.obstacle_array_msg.obstacles = obs_list
             except Exception as e:

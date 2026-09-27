@@ -99,6 +99,11 @@ class CommGatewayNode(Node):
 
         # State
         self.uav_positions: Dict[str, Point] = {}
+        self.uav_pos_valid: Dict[str, bool] = {}   # True once EKF has converged
+        for uid in self.uav_ids:
+            idx = int(uid.split('_')[1]) if '_' in uid and uid.split('_')[1].isdigit() else 0
+            self.uav_positions[uid] = Point(x=float(idx * 3.0), y=0.0, z=0.0)
+            self.uav_pos_valid[uid] = True   # valid initial spawn position
         self.in_flight_messages: List[InFlightMessage] = []
         self.connectivity_graph = nx.Graph()
 
@@ -152,8 +157,18 @@ class CommGatewayNode(Node):
         )
 
     def _on_pose(self, uav_id: str, msg: Point):
-        """Update a UAV's known position."""
+        """Update a UAV's known position — reject invalid pre-EKF outliers (>2000m)."""
+        import math
+        dist_from_origin = math.sqrt(msg.x**2 + msg.y**2 + msg.z**2)
+        # Geofence is ±500m; pre-EKF outliers can be tens/hundreds of km — reject them
+        if dist_from_origin > 2000.0:
+            self.get_logger().warn(
+                f'[{uav_id}] Ignoring pre-EKF outlier position: '
+                f'dist={dist_from_origin:.0f}m'
+            )
+            return
         self.uav_positions[uav_id] = msg
+        self.uav_pos_valid[uav_id] = True
 
     def _on_comm_tx(self, src_uav_id: str, msg: SwarmMessage):
         """
@@ -167,6 +182,26 @@ class CommGatewayNode(Node):
         # Set TTL if not set
         if msg.ttl == 0:
             msg.ttl = self.max_ttl
+
+        # Handle broadcast (empty dst_uav_id, "*", or "ALL")
+        if not msg.dst_uav_id or msg.dst_uav_id in ('', '*', 'ALL'):
+            for target_id in self.uav_ids:
+                if target_id != src_uav_id:
+                    copy_msg = SwarmMessage()
+                    copy_msg.msg_id = f'{msg.msg_id}_{target_id}'
+                    copy_msg.src_uav_id = src_uav_id
+                    copy_msg.dst_uav_id = target_id
+                    copy_msg.msg_type = msg.msg_type
+                    copy_msg.payload_json = msg.payload_json
+                    copy_msg.origin_stamp = msg.origin_stamp
+                    copy_msg.hop_count = msg.hop_count
+                    copy_msg.ttl = msg.ttl
+                    in_flight = InFlightMessage(
+                        msg=copy_msg,
+                        current_node=src_uav_id,
+                    )
+                    self.in_flight_messages.append(in_flight)
+            return
 
         in_flight = InFlightMessage(
             msg=msg,
@@ -216,6 +251,12 @@ class CommGatewayNode(Node):
                 id_b = all_nodes[j]
 
                 if id_a not in node_positions or id_b not in node_positions:
+                    continue
+
+                # Skip pairs where UAV position hasn't been validated yet (pre-EKF)
+                if id_a != 'GCS' and not self.uav_pos_valid.get(id_a, True):
+                    continue
+                if id_b != 'GCS' and not self.uav_pos_valid.get(id_b, True):
                     continue
 
                 # Canonical ordering: a < b lexicographically
@@ -293,16 +334,16 @@ class CommGatewayNode(Node):
             if current == dst:
                 if dst in self.comm_rx_pubs:
                     self.comm_rx_pubs[dst].publish(ifm.msg)
-                    self.get_logger().debug(
-                        f'Delivered msg {ifm.msg.msg_id} to {dst}'
+                    self.get_logger().info(
+                        f'[MESH DELIVERED] msg {ifm.msg.msg_id} ({ifm.msg.msg_type}) to {dst} after {ifm.msg.hop_count} hops'
                     )
                 ifm.delivered = True
                 continue
 
             # Check TTL
             if ifm.msg.ttl <= 0:
-                self.get_logger().debug(
-                    f'Dropped msg {ifm.msg.msg_id}: TTL expired at {current}'
+                self.get_logger().warn(
+                    f'[MESH DROPPED] msg {ifm.msg.msg_id}: TTL expired at {current}'
                 )
                 ifm.dropped = True
                 continue
@@ -330,6 +371,10 @@ class CommGatewayNode(Node):
                 continue
 
             next_hop = path[1]
+            if len(path) > 2:
+                self.get_logger().info(
+                    f'[MESH MULTI-HOP] Path: {" -> ".join(path)} (hop {ifm.msg.hop_count+1}, next: {next_hop}, msg={ifm.msg.msg_type})'
+                )
 
             # Get edge data for packet loss check
             edge_data = self.connectivity_graph.get_edge_data(current, next_hop)

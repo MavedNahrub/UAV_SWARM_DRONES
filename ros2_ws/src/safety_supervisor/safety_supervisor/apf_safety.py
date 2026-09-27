@@ -28,10 +28,10 @@ def compute_apf_safe_velocity(
     obstacles: List[Tuple[Tuple[float, float, float], float]],  # [((cx, cy, cz), radius), ...]
     geofence_polygon: List[Tuple[float, float]],
     min_separation_m: float = 8.0,
-    obstacle_safety_margin_m: float = 5.0,
+    obstacle_safety_margin_m: float = 12.0,
     max_speed_mps: float = 12.0,
     k_rep_peer: float = 5.0,
-    k_rep_obs: float = 6.0,
+    k_rep_obs: float = 14.0,
     dt_lookahead: float = 0.5,
 ) -> Tuple[Tuple[float, float, float], List[str]]:
     """
@@ -49,6 +49,9 @@ def compute_apf_safe_velocity(
     # 1. Peer UAV repulsion
     for peer_id, peer_pos in peer_positions.items():
         if peer_id == uav_id:
+            continue
+        # Skip if either UAV is grounded on the launchpad
+        if pz < 1.5 or peer_pos[2] < 1.5:
             continue
         dx = px - peer_pos[0]
         dy = py - peer_pos[1]
@@ -78,12 +81,14 @@ def compute_apf_safe_velocity(
         if boundary_dist < obstacle_safety_margin_m:
             violations.append(f"OBSTACLE_PROXIMITY:{boundary_dist:.2f}")
 
-        rep_radius = obstacle_safety_margin_m * 2.5
+        # Repulsion field extends 4x safety margin from obstacle surface
+        rep_radius = obstacle_safety_margin_m * 4.0
         if 0.01 < boundary_dist < rep_radius:
-            force = k_rep_obs * (1.0 / max(0.1, boundary_dist) - 1.0 / rep_radius) / max(0.1, boundary_dist**2)
-            rep_vx += (dx / dist) * force
-            rep_vy += (dy / dist) * force
-            rep_vz += (dz / dist) * force
+            safe_bd = max(0.5, boundary_dist)
+            force = k_rep_obs * (1.0 / safe_bd - 1.0 / rep_radius) / (safe_bd ** 2)
+            rep_vx += (dx / max(0.01, dist)) * force
+            rep_vy += (dy / max(0.01, dist)) * force
+            rep_vz += (dz / max(0.01, dist)) * force
 
     # 3. Geofence boundary clamping (if polygon defined)
     if len(geofence_polygon) >= 3:

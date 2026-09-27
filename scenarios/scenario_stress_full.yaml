@@ -1,22 +1,32 @@
-# scenario_stress_full.yaml — Comprehensive stress scenario
-# 8 UAVs, 8 PoIs, obstacle field, failure injection, critical interrupt, and battery RTH
+# scenario_stress_full.yaml — Full stress test
+#
+# 8 UAVs | 10 PoIs | 8 obstacles | failure injection + priority interrupt
+# + battery RTH pressure + expanded geofence to ±600m
+#
+# Deliberately harder than scenario_basic.yaml:
+#   - 2× the PoIs (10 vs 5), more spread (up to 480m from GCS)
+#   - 8 obstacles vs 5 (factory + overpass now active)
+#   - PoIs require 2-hop relay chain to reach NW/SE far corners
+#   - UAV failure at t=80s + CRITICAL interrupt at t=45s (overlap stress)
+#   - Second failure at t=200s leaves only 5/8 functional surveyors
+#   - Expanded geofence ±600m but far PoIs sit near 450m — tests boundary
 
 mission:
   name: "stress_full"
-  duration_s: 400
+  duration_s: 900
   seed: 303
 
 uavs:
   count: 8
   roles:
     uav_00: SURVEYOR
-    uav_01: SURVEYOR
-    uav_02: SURVEYOR
+    uav_01: SURVEYOR   # fails at t=80s
+    uav_02: SURVEYOR   # fails at t=200s
     uav_03: SURVEYOR
     uav_04: SURVEYOR
-    uav_05: RELAY
-    uav_06: RESERVE
-    uav_07: RESERVE
+    uav_05: RELAY      # single relay — comms stressed when surveyors spread far
+    uav_06: RESERVE    # promoted after uav_01 failure
+    uav_07: RESERVE    # promoted after uav_02 failure
 
 gcs:
   position:
@@ -28,67 +38,112 @@ geofence:
   polygon:
     - {x: -600.0, y: -600.0, z: 0.0}
     - {x:  600.0, y: -600.0, z: 0.0}
-    - {x:  600.0, y:  600.0, z: 0.0}
-    - {x: -600.0, y:  600.0, z: 0.0}
+    - {x:  600.0,  y: 600.0, z: 0.0}
+    - {x: -600.0,  y: 600.0, z: 0.0}
   max_altitude_m: 120.0
 
+# Full 8-obstacle catalogue from disaster_area.sdf
 obstacles:
-  - center: {x: 100.0, y: 50.0, z: 5.0}
-    radius_m: 15.0
-  - center: {x: -150.0, y: 150.0, z: 5.0}
-    radius_m: 20.0
-  - center: {x: 200.0, y: -100.0, z: 5.0}
-    radius_m: 12.0
+  - center: {x: 120.0, y: 80.0,  z: 0.0}
+    radius_m: 22.0   # collapsed apartment
+
+  - center: {x: -90.0, y: 140.0, z: 0.0}
+    radius_m: 20.0   # office ruin
+
+  - center: {x: 200.0, y: -60.0, z: 0.0}
+    radius_m: 18.0   # debris field A
+
+  - center: {x: -160.0, y: -80.0, z: 0.0}
+    radius_m: 28.0   # landslide deposit
+
+  - center: {x: 50.0, y: -30.0,  z: 20.0}
+    radius_m: 6.0    # comms tower (tall)
+
+  - center: {x: 310.0, y: 120.0, z: 0.0}
+    radius_m: 25.0   # factory ruin + chimney
+
+  - center: {x: -240.0, y: 260.0, z: 0.0}
+    radius_m: 20.0   # rubble field B (NW)
+
+  - center: {x: 180.0, y: 280.0, z: 0.0}
+    radius_m: 12.0   # highway overpass (bridge deck collision)
 
 pois:
+  # NEAR zone (< 180m) — initial fast coverage
   - poi_id: "poi_01"
-    position: {x: 80.0, y: 120.0, z: 0.0}
-    priority: 1
-    survey_duration_s: 25.0
-
-  - poi_id: "poi_02"
-    position: {x: 250.0, y: -80.0, z: 0.0}
+    position: {x: 80.0, y: 120.0, z: 0.0}    # 145m — near apartment ruin
     priority: 2
     survey_duration_s: 20.0
 
-  - poi_id: "poi_03"
-    position: {x: -250.0, y: 200.0, z: 0.0}
+  - poi_id: "poi_02"
+    position: {x: -60.0, y: -80.0, z: 0.0}   # 100m SW — open area
     priority: 1
+    survey_duration_s: 15.0
+
+  # MID zone (180–300m) — relay aids throughput
+  - poi_id: "poi_03"
+    position: {x: 200.0, y: -50.0, z: 0.0}   # 206m — near debris field
+    priority: 2
     survey_duration_s: 25.0
 
   - poi_id: "poi_04"
-    position: {x: 180.0, y: 350.0, z: 0.0}
-    priority: 2
-    survey_duration_s: 30.0
+    position: {x: -100.0, y: 200.0, z: 0.0}  # 224m — past office ruin
+    priority: 1
+    survey_duration_s: 25.0
 
   - poi_id: "poi_05"
-    position: {x: -300.0, y: -200.0, z: 0.0}
-    priority: 1
+    position: {x: 250.0, y: 120.0, z: 0.0}   # 278m — approaching factory
+    priority: 2
     survey_duration_s: 20.0
 
   - poi_id: "poi_06"
-    position: {x: 350.0, y: 150.0, z: 0.0}
+    position: {x: -220.0, y: -100.0, z: 0.0} # 240m SW — past landslide
+    priority: 1
+    survey_duration_s: 25.0
+
+  # FAR zone (300m+) — relay chain REQUIRED; stresses 2-hop routing
+  - poi_id: "poi_07"
+    position: {x: 150.0, y: 300.0, z: 0.0}   # 335m N — near overpass
+    priority: 1
+    survey_duration_s: 30.0
+
+  - poi_id: "poi_08"
+    position: {x: 380.0, y: 150.0, z: 0.0}   # 410m E — past factory
     priority: 2
     survey_duration_s: 25.0
 
-  - poi_id: "poi_07"
-    position: {x: -120.0, y: -350.0, z: 0.0}
+  - poi_id: "poi_09"
+    position: {x: -300.0, y: 320.0, z: 0.0}  # 438m NW — near rubble B
     priority: 1
-    survey_duration_s: 20.0
-
-  - poi_id: "poi_08"
-    position: {x: 0.0, y: 400.0, z: 0.0}
-    priority: 2
     survey_duration_s: 30.0
 
+  - poi_id: "poi_10"
+    position: {x: -200.0, y: -350.0, z: 0.0} # 400m SW — max range test
+    priority: 2
+    survey_duration_s: 20.0
+
 fault_injection:
+  # Hard failure on uav_01 at t=80s — surveyors in flight, CBBA must rebid
   - time_s: 80.0
+    target_uav: "uav_01"
+    fault_type: "UAV_FAILURE"
+
+  # Second failure at t=200s — uav_02 crashes; reserve uav_07 activates
+  - time_s: 200.0
     target_uav: "uav_02"
     fault_type: "UAV_FAILURE"
 
 priority_interrupts:
-  - time_s: 50.0
-    poi_id: "poi_critical_alert"
-    position: {x: 220.0, y: 200.0, z: 0.0}
-    priority: 3  # CRITICAL
-    survey_duration_s: 15.0
+  # CRITICAL at t=45s — fires BEFORE first failure to overlap stress
+  - time_s: 45.0
+    poi_id: "poi_critical_collapse"
+    position: {x: 280.0, y: -120.0, z: 0.0}  # 305m SE — relay required
+    priority: 3
+    survey_duration_s: 10.0
+
+  # Second CRITICAL at t=300s — mid-mission, re-tests partial rebidding
+  - time_s: 300.0
+    poi_id: "poi_critical_nw_2"
+    position: {x: -350.0, y: 280.0, z: 0.0}  # 449m NW — extreme range
+    priority: 3
+    survey_duration_s: 12.0

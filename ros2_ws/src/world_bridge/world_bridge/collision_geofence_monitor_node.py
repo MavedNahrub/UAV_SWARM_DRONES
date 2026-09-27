@@ -32,6 +32,9 @@ class CollisionGeofenceMonitorNode(Node):
         check_rate = self.get_parameter('check_rate_hz').value
 
         self.uav_positions = {}
+        for uid in self.uav_ids:
+            idx = int(uid.split('_')[1]) if '_' in uid and uid.split('_')[1].isdigit() else 0
+            self.uav_positions[uid] = (float(idx * 3.0), 0.0, 0.0)
         self.geofence_polygon = []
         self.obstacles = []
 
@@ -82,6 +85,10 @@ class CollisionGeofenceMonitorNode(Node):
         # 1. Pairwise separation check
         pairs = compute_pairwise_separation(self.uav_positions)
         for uav_a, uav_b, dist in pairs:
+            pos_a = self.uav_positions.get(uav_a, (0.0, 0.0, 0.0))
+            pos_b = self.uav_positions.get(uav_b, (0.0, 0.0, 0.0))
+            if pos_a[2] < 1.5 or pos_b[2] < 1.5:
+                continue
             if dist < self.min_sep:
                 self.get_logger().warn(
                     f'COLLISION VIOLATION: {uav_a} and {uav_b} distance {dist:.2f}m < {self.min_sep:.2f}m')

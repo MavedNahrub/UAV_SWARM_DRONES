@@ -29,15 +29,37 @@ class MissionLoggerNode(Node):
         self.declare_parameter('uav_ids', 'uav_00,uav_01,uav_02,uav_03,uav_04,uav_05')
         self.declare_parameter('out_path', 'logs/run.jsonl')
         self.declare_parameter('scenario_name', 'scenario_basic')
+        self.declare_parameter('scenario', '')
         self.declare_parameter('log_rate_hz', 2.0)
 
         uav_ids_str = self.get_parameter('uav_ids').get_parameter_value().string_value
         self.uav_ids = [x.strip() for x in uav_ids_str.split(',') if x.strip()]
         self.out_path = self.get_parameter('out_path').get_parameter_value().string_value
         scenario_name = self.get_parameter('scenario_name').get_parameter_value().string_value
+        scenario_path = self.get_parameter('scenario').get_parameter_value().string_value
         log_rate = self.get_parameter('log_rate_hz').value
 
         self.aggregator = MetricsAggregator(scenario_name=scenario_name)
+
+        if scenario_path and os.path.exists(scenario_path):
+            try:
+                import yaml
+                with open(scenario_path, 'r') as f:
+                    sdata = yaml.safe_load(f) or {}
+                for poi_data in sdata.get('pois', []):
+                    p_id = poi_data.get('poi_id')
+                    pri = poi_data.get('priority', 1)
+                    weights = {1: 1.0, 2: 2.0, 3: 3.0}
+                    self.aggregator.poi_states[p_id] = {
+                        'status': 0,
+                        'priority': pri,
+                        'weight': weights.get(pri, 1.0)
+                    }
+                m_name = sdata.get('mission', {}).get('name')
+                if m_name:
+                    self.aggregator.scenario_name = m_name
+            except Exception as e:
+                self.get_logger().warn(f'Could not load initial PoIs from scenario: {e}')
 
         # Ensure directory exists
         os.makedirs(os.path.dirname(os.path.abspath(self.out_path)), exist_ok=True)
@@ -65,6 +87,7 @@ class MissionLoggerNode(Node):
 
         self.start_time = self._now_sec()
         self.current_tick = 0
+        self.mission_summary_written = False
         self.timer = self.create_timer(1.0 / max(log_rate, 0.1), self._log_tick)
 
         self.get_logger().info(f'MissionLogger started, writing to {self.out_path}')
@@ -80,10 +103,16 @@ class MissionLoggerNode(Node):
         def tx_cb(msg: SwarmMessage, u=uid):
             stamp = msg.origin_stamp.sec + msg.origin_stamp.nanosec * 1e-9
             self.aggregator.record_tx(msg.msg_id, stamp)
+            if msg.msg_type == 'POI_REPORT':
+                self._handle_poi_report(msg)
+            elif msg.msg_type == 'POI_ALERT':
+                self._handle_poi_alert(msg)
 
         def rx_cb(msg: SwarmMessage, u=uid):
             now = self._now_sec()
             self.aggregator.record_rx(msg.msg_id, now)
+            if msg.msg_type == 'POI_ALERT':
+                self._handle_poi_alert(msg)
 
         def battery_cb(msg: UAVState, u=uid):
             self.aggregator.record_battery(u, msg.battery_frac)
@@ -92,15 +121,54 @@ class MissionLoggerNode(Node):
             if msg.role != UAVState.GROUNDED:
                 self.aggregator.active_uavs.add(u)
             if msg.assigned_poi_id:
-                # Track in-progress PoI
                 p_id = msg.assigned_poi_id
                 if p_id not in self.aggregator.poi_states:
                     self.aggregator.poi_states[p_id] = {'status': 1, 'priority': 1, 'weight': 1.0}
+                    rec = self.aggregator.record_poi_event(p_id, 'IN_PROGRESS', 1, 1.0)
+                    self._write_record(rec)
+                elif self.aggregator.poi_states[p_id]['status'] == 0:
+                    self.aggregator.poi_states[p_id]['status'] = 1
+                    pri = self.aggregator.poi_states[p_id].get('priority', 1)
+                    w = self.aggregator.poi_states[p_id].get('weight', 1.0)
+                    rec = self.aggregator.record_poi_event(p_id, 'IN_PROGRESS', pri, w)
+                    self._write_record(rec)
 
         self.create_subscription(SwarmMessage, f'/{uid}/comm_tx', tx_cb, reliable)
         self.create_subscription(SwarmMessage, f'/{uid}/comm_rx', rx_cb, reliable)
         self.create_subscription(UAVState, f'/{uid}/battery_state', battery_cb, best_effort)
         self.create_subscription(UAVState, f'/{uid}/task_state', task_cb, reliable)
+
+    def _handle_poi_report(self, msg: SwarmMessage):
+        try:
+            payload = json.loads(msg.payload_json)
+            p_id = payload.get('poi_id')
+            pri = int(payload.get('priority', 1))
+            weights = {1: 1.0, 2: 2.0, 3: 3.0}
+            weight = weights.get(pri, 1.0)
+            if p_id:
+                if p_id in self.aggregator.poi_states and self.aggregator.poi_states[p_id].get('status') == 3:
+                    return
+                self.aggregator.poi_states[p_id] = {'status': 3, 'priority': pri, 'weight': weight}
+                rec = self.aggregator.record_poi_event(p_id, 'SURVEYED', pri, weight)
+                self._write_record(rec)
+                self.get_logger().info(f'Logged POI SURVEYED: {p_id}')
+        except Exception as e:
+            self.get_logger().warn(f'Error logging POI_REPORT: {e}')
+
+    def _handle_poi_alert(self, msg: SwarmMessage):
+        try:
+            payload = json.loads(msg.payload_json)
+            p_id = payload.get('poi_id')
+            pri = int(payload.get('priority', 1))
+            weights = {1: 1.0, 2: 2.0, 3: 3.0}
+            weight = weights.get(pri, 1.0)
+            if p_id and p_id not in self.aggregator.poi_states:
+                self.aggregator.poi_states[p_id] = {'status': 0, 'priority': pri, 'weight': weight}
+                rec = self.aggregator.record_poi_event(p_id, 'ALERTED', pri, weight)
+                self._write_record(rec)
+                self.get_logger().info(f'Logged POI ALERTED: {p_id} (priority={pri})')
+        except Exception as e:
+            pass
 
     def _on_link_states(self, msg: LinkStateArray):
         self.aggregator.connectivity_fraction = msg.connectivity_fraction
@@ -144,11 +212,20 @@ class MissionLoggerNode(Node):
         self._write_record(rec)
         self.current_tick += 1
 
+        total_pois = len(self.aggregator.poi_states)
+        p_surv = sum(1 for p in self.aggregator.poi_states.values() if p.get('status') == 3)
+        if total_pois > 0 and p_surv >= total_pois and not self.mission_summary_written:
+            summary = self.aggregator.generate_mission_summary(sim_time)
+            self._write_record(summary)
+            self.mission_summary_written = True
+            self.get_logger().info(f'All {total_pois} PoIs surveyed! Mission summary written.')
+
     def destroy_node(self):
-        # Write mission summary before closing
-        mission_dur = self._now_sec() - self.start_time
-        summary = self.aggregator.generate_mission_summary(mission_dur)
-        self._write_record(summary)
+        if not self.mission_summary_written:
+            mission_dur = self._now_sec() - self.start_time
+            summary = self.aggregator.generate_mission_summary(mission_dur)
+            self._write_record(summary)
+            self.mission_summary_written = True
         self.log_file.close()
         super().destroy_node()
 

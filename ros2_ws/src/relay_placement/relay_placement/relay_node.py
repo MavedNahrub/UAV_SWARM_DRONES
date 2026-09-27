@@ -12,13 +12,15 @@ Per ARCHITECTURE.md Section 6.3:
 
 import json
 import math
+import os
+import yaml
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import Point, Twist
-from swarm_msgs.msg import UAVState, SwarmMessage, RelayDecision, LinkStateArray
+from swarm_msgs.msg import UAVState, SwarmMessage, RelayDecision, LinkStateArray, FaultEvent
 
 from .relay_heuristic import compute_relay_positions, check_gcs_connectivity
 
@@ -35,18 +37,41 @@ class RelayNode(Node):
         self.declare_parameter('relay_tick_hz', 1.0)
         self.declare_parameter('cruise_speed_mps', 10.0)
         self.declare_parameter('relay_altitude_m', 25.0)
+        self.declare_parameter('scenario', '')
 
         self.uav_id = self.get_parameter('uav_id').get_parameter_value().string_value
         self.relay_tick_hz = self.get_parameter('relay_tick_hz').value
         self.cruise_speed = self.get_parameter('cruise_speed_mps').value
         self.relay_altitude = self.get_parameter('relay_altitude_m').value
+        scenario_path = self.get_parameter('scenario').get_parameter_value().string_value
 
         # State: believed positions of all UAVs
         self.uav_positions = {}
         self.uav_roles = {}
+        self.failed_uavs = set()
         self.connectivity_graph = nx.Graph()
         self.my_relay_target = None  # position to fly to if we're a relay
         self.is_relay = False
+        self.position_received = False
+
+        if scenario_path and os.path.exists(scenario_path):
+            try:
+                with open(scenario_path, 'r') as f:
+                    sdata = yaml.safe_load(f) or {}
+                roles = sdata.get('uavs', {}).get('roles', {})
+                role_map = {
+                    'SURVEYOR': UAVState.SURVEYOR,
+                    'RELAY': UAVState.RELAY,
+                    'RESERVE': UAVState.RESERVE,
+                    'GROUNDED': UAVState.GROUNDED,
+                    'IDLE': UAVState.IDLE,
+                }
+                for uid, r in roles.items():
+                    self.uav_roles[uid] = role_map.get(r, UAVState.SURVEYOR)
+                    idx = int(uid.split('_')[1]) if '_' in uid and uid.split('_')[1].isdigit() else 0
+                    self.uav_positions[uid] = (float(idx * 3.0), 0.0, 0.0)
+            except Exception as e:
+                self.get_logger().warn(f'Could not load scenario in relay_node: {e}')
 
         qos = QoSProfile(
             reliability=ReliabilityPolicy.RELIABLE,
@@ -64,6 +89,8 @@ class RelayNode(Node):
             LinkStateArray, '/swarm/link_states', self._on_link_states, qos)
         self.create_subscription(
             UAVState, 'task_state', self._on_task_state, qos)
+        self.create_subscription(
+            FaultEvent, '/swarm/fault_events', self._on_fault_event, qos)
 
         # Publishers
         self.comm_tx_pub = self.create_publisher(SwarmMessage, 'comm_tx', qos)
@@ -77,9 +104,19 @@ class RelayNode(Node):
 
     def _on_pose(self, msg: Point):
         self.uav_positions[self.uav_id] = (msg.x, msg.y, msg.z)
+        self.position_received = True
 
     def _on_task_state(self, msg: UAVState):
+        if msg.uav_id in self.failed_uavs:
+            return
         self.uav_roles[msg.uav_id] = msg.role
+
+    def _on_fault_event(self, msg: FaultEvent):
+        if msg.fault_type in ('UAV_FAILURE', 'BATTERY_CRITICAL'):
+            self.failed_uavs.add(msg.uav_id)
+            self.uav_roles[msg.uav_id] = UAVState.GROUNDED
+            self.get_logger().warn(
+                f'Relay node noted failure on {msg.uav_id}, role set to GROUNDED')
 
     def _on_link_states(self, msg: LinkStateArray):
         """Rebuild connectivity graph from link states."""
@@ -100,18 +137,27 @@ class RelayNode(Node):
                 role = payload.get('role')
                 if uid and pos:
                     self.uav_positions[uid] = (pos['x'], pos['y'], pos['z'])
-                if uid and role is not None:
+                if uid and role is not None and uid not in self.failed_uavs:
                     self.uav_roles[uid] = role
             except (json.JSONDecodeError, KeyError):
                 pass
 
     def _relay_tick(self):
         """Periodic relay computation."""
-        # Identify surveyors and available relays
+        # Don't run relay computation until own position is valid
+        if not self.position_received:
+            return
+
+        # Identify surveyors and available relays (excluding failed/grounded)
         surveyors = [uid for uid, role in self.uav_roles.items()
-                     if role == UAVState.SURVEYOR]
+                     if role == UAVState.SURVEYOR and uid not in self.failed_uavs]
         relays = [uid for uid, role in self.uav_roles.items()
-                  if role in (UAVState.RELAY, UAVState.IDLE)]
+                  if role in (UAVState.RELAY, UAVState.IDLE, UAVState.RESERVE) and uid not in self.failed_uavs]
+
+        # Dynamic fallback: if all dedicated relays are grounded, pick available reserve or idle UAV
+        if not relays:
+            relays = [uid for uid, role in self.uav_roles.items()
+                      if uid not in self.failed_uavs and uid not in surveyors]
 
         if not surveyors:
             return
@@ -147,10 +193,12 @@ class RelayNode(Node):
         # Gossip our position/role
         self._gossip_state()
 
-        # Command synthesis if we're relay
-        if self.is_relay and self.my_relay_target:
+        # Command synthesis — only publish cmd_vel_proposed if our actual role is RELAY
+        # to prevent overriding CBBA's velocity commands for SURVEYOR UAVs
+        my_actual_role = self.uav_roles.get(self.uav_id, UAVState.IDLE)
+        if my_actual_role == UAVState.RELAY and self.is_relay and self.my_relay_target:
             self._fly_to_relay_position()
-        elif self.is_relay:
+        elif my_actual_role == UAVState.RELAY and self.is_relay:
             cmd = Twist()
             self.cmd_vel_pub.publish(cmd)
 

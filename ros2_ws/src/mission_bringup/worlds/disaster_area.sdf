@@ -1,129 +1,445 @@
 <?xml version="1.0" ?>
 <!--
-  disaster_area.sdf — Gazebo Harmonic world for PUSHPAK UAV-X swarm simulation.
-  Flat terrain representing a disaster survey area with geofence boundary markers.
+  disaster_area.sdf — PUSHPAK UAV-X disaster-response test environment.
+
+  Zone layout (ENU, GCS at origin, comm_gateway max_range=300m):
+    NEAR  (0–180m):   poi_01 @ (80,120)   — direct comms always OK
+    MID   (180–300m): poi_02 @ (200,-50)  — marginal, relay beneficial
+                      poi_03 @ (-100,200) — relay needed if GCS blocked
+    FAR   (300m+):    poi_04 @ (150,300)  — requires relay chain (~335m)
+                      poi_05 @ (-200,-150)— requires relay chain (~250m diag)
+
+  Obstacle catalogue matching scenario YAMLs:
+    obs_01 Collapsed apartment   center(120,80)   r=25m  h=18m
+    obs_02 Office ruin           center(-90,140)  r=22m  h=22m
+    obs_03 Debris field A        center(200,-60)  r=18m  h=6m
+    obs_04 Landslide deposit     center(-160,-80) r=30m  h=8m
+    obs_05 Comms tower (intact)  center(50,-30)   r=5m   h=40m
+    obs_06 Factory ruin          center(310,120)  r=28m  h=14m
+    obs_07 Rubble field B (NW)   center(-240,260) r=20m  h=5m
+    obs_08 Highway overpass      center(180,280)  r=12m  h=10m
 -->
 <sdf version="1.9">
   <world name="default">
 
-    <!-- Physics -->
-    <physics name="1ms" type="ode">
-      <max_step_size>0.001</max_step_size>
+    <physics type="ode">
+      <max_step_size>0.004</max_step_size>
       <real_time_factor>1.0</real_time_factor>
+      <real_time_update_rate>250</real_time_update_rate>
     </physics>
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
 
-    <!-- Plugins -->
-    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
-    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <spherical_coordinates>
+      <surface_model>EARTH_WGS84</surface_model>
+      <world_frame_orientation>ENU</world_frame_orientation>
+      <latitude_deg>47.397971057728974</latitude_deg>
+      <longitude_deg>8.546163739800146</longitude_deg>
+      <elevation>0</elevation>
+    </spherical_coordinates>
+
+    <plugin filename="gz-sim-physics-system"           name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"     name="gz::sim::systems::UserCommands"/>
     <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
-    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+    <plugin filename="gz-sim-contact-system"           name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-imu-system"               name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-air-pressure-system"      name="gz::sim::systems::AirPressure"/>
+    <plugin filename="gz-sim-air-speed-system"         name="gz::sim::systems::AirSpeed"/>
+    <plugin filename="gz-sim-apply-link-wrench-system" name="gz::sim::systems::ApplyLinkWrench"/>
+    <plugin filename="gz-sim-navsat-system"            name="gz::sim::systems::NavSat"/>
+    <plugin filename="gz-sim-magnetometer-system"      name="gz::sim::systems::Magnetometer"/>
+    <plugin filename="gz-sim-sensors-system"           name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
 
-    <!-- Sun -->
+    <!-- Overcast disaster sky lighting -->
     <light type="directional" name="sun">
       <cast_shadows>true</cast_shadows>
-      <pose>0 0 10 0 0 0</pose>
-      <diffuse>0.8 0.8 0.8 1</diffuse>
-      <specular>0.2 0.2 0.2 1</specular>
-      <attenuation>
-        <range>1000</range>
-        <constant>0.9</constant>
-        <linear>0.01</linear>
-        <quadratic>0.001</quadratic>
-      </attenuation>
-      <direction>-0.5 0.1 -0.9</direction>
+      <pose>0 0 500 0 0 0</pose>
+      <diffuse>0.72 0.70 0.65 1</diffuse>
+      <specular>0.12 0.12 0.12 1</specular>
+      <attenuation><range>2000</range><constant>0.9</constant><linear>0.01</linear><quadratic>0.0</quadratic></attenuation>
+      <direction>-0.3 0.2 -0.9</direction>
+    </light>
+    <light type="directional" name="ambient_fill">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 200 0 0 0</pose>
+      <diffuse>0.32 0.32 0.38 1</diffuse>
+      <specular>0.04 0.04 0.04 1</specular>
+      <attenuation><range>2000</range><constant>1.0</constant><linear>0</linear><quadratic>0</quadratic></attenuation>
+      <direction>0 0 -1</direction>
     </light>
 
-    <!-- Ground plane -->
+    <!-- ── Ground — dusty cracked-earth colour ─────────────────── -->
     <model name="ground_plane">
       <static>true</static>
       <link name="link">
         <collision name="collision">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>1000 1000</size>
-            </plane>
-          </geometry>
+          <geometry><plane><normal>0 0 1</normal><size>1100 1100</size></plane></geometry>
         </collision>
         <visual name="visual">
-          <geometry>
-            <plane>
-              <normal>0 0 1</normal>
-              <size>1000 1000</size>
-            </plane>
-          </geometry>
+          <geometry><plane><normal>0 0 1</normal><size>1100 1100</size></plane></geometry>
           <material>
-            <ambient>0.3 0.3 0.25 1</ambient>
-            <diffuse>0.4 0.4 0.35 1</diffuse>
+            <ambient>0.42 0.35 0.27 1</ambient>
+            <diffuse>0.52 0.44 0.33 1</diffuse>
+            <specular>0.01 0.01 0.01 1</specular>
           </material>
         </visual>
       </link>
     </model>
 
-    <!-- Geofence boundary markers (visual only, enforcement is in safety_supervisor) -->
-    <!-- NE corner marker -->
+    <!-- Rubble texture patches (visual only, low flat slabs) -->
+    <model name="rubble_patch_A">
+      <static>true</static><pose>85 65 0.05 0 0 0.4</pose>
+      <link name="link"><visual name="v"><geometry><box><size>45 30 0.1</size></box></geometry>
+        <material><ambient>0.38 0.31 0.24 1</ambient><diffuse>0.48 0.39 0.29 1</diffuse></material></visual></link>
+    </model>
+    <model name="rubble_patch_B">
+      <static>true</static><pose>-115 105 0.05 0 0 1.1</pose>
+      <link name="link"><visual name="v"><geometry><box><size>55 35 0.1</size></box></geometry>
+        <material><ambient>0.35 0.29 0.22 1</ambient><diffuse>0.45 0.37 0.27 1</diffuse></material></visual></link>
+    </model>
+    <model name="rubble_patch_C">
+      <static>true</static><pose>225 -45 0.05 0 0 0.7</pose>
+      <link name="link"><visual name="v"><geometry><box><size>58 38 0.1</size></box></geometry>
+        <material><ambient>0.40 0.32 0.24 1</ambient><diffuse>0.50 0.41 0.31 1</diffuse></material></visual></link>
+    </model>
+    <model name="rubble_patch_D">
+      <static>true</static><pose>-195 -100 0.05 0 0 2.0</pose>
+      <link name="link"><visual name="v"><geometry><box><size>70 50 0.1</size></box></geometry>
+        <material><ambient>0.36 0.28 0.21 1</ambient><diffuse>0.46 0.37 0.27 1</diffuse></material></visual></link>
+    </model>
+    <model name="rubble_patch_E">
+      <static>true</static><pose>295 115 0.05 0 0 0.2</pose>
+      <link name="link"><visual name="v"><geometry><box><size>65 45 0.1</size></box></geometry>
+        <material><ambient>0.39 0.32 0.24 1</ambient><diffuse>0.49 0.40 0.30 1</diffuse></material></visual></link>
+    </model>
+
+    <!-- ── OBSTACLE 01: Collapsed apartment block ───────────────── -->
+    <!-- r_collision=25m, center=(120,80), clearance alt for drones: >20m -->
+    <model name="obs_01_apt_main">
+      <static>true</static><pose>120 80 9 0 0 0.3</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>40 35 18</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>40 35 18</size></box></geometry>
+          <material><ambient>0.55 0.50 0.44 1</ambient><diffuse>0.63 0.56 0.48 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_01_slab">
+      <static>true</static><pose>137 75 5 0 0.55 0.3</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>18 3 12</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>18 3 12</size></box></geometry>
+          <material><ambient>0.50 0.45 0.39 1</ambient><diffuse>0.58 0.52 0.44 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_01_rubble_base">
+      <static>true</static><pose>108 92 2.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>22 18 5</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>22 18 5</size></box></geometry>
+          <material><ambient>0.47 0.41 0.34 1</ambient><diffuse>0.56 0.48 0.39 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 02: Multi-storey office ruin ────────────────── -->
+    <!-- r_collision=22m, center=(-90,140) -->
+    <model name="obs_02_office_main">
+      <static>true</static><pose>-90 140 11 0 0 -0.4</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>38 28 22</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>38 28 22</size></box></geometry>
+          <material><ambient>0.52 0.50 0.47 1</ambient><diffuse>0.60 0.58 0.53 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_02_collapsed_wing">
+      <static>true</static><pose>-107 152 4 0 0.15 -0.4</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>20 14 8</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>20 14 8</size></box></geometry>
+          <material><ambient>0.48 0.45 0.41 1</ambient><diffuse>0.57 0.53 0.47 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 03: Debris field A ─────────────────────────── -->
+    <!-- r_collision=18m, center=(200,-60) -->
+    <model name="obs_03_mound_A">
+      <static>true</static><pose>200 -60 3 0 0 0.6</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>30 24 6</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>30 24 6</size></box></geometry>
+          <material><ambient>0.44 0.37 0.29 1</ambient><diffuse>0.54 0.45 0.35 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_03_mound_B">
+      <static>true</static><pose>215 -48 2 0 0 -0.3</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>16 12 4</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>16 12 4</size></box></geometry>
+          <material><ambient>0.42 0.35 0.27 1</ambient><diffuse>0.52 0.43 0.33 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_03_mound_C">
+      <static>true</static><pose>186 -72 1.5 0 0 1.0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>12 10 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>12 10 3</size></box></geometry>
+          <material><ambient>0.45 0.39 0.31 1</ambient><diffuse>0.55 0.47 0.37 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 04: Landslide deposit + boulders ────────────── -->
+    <!-- r_collision=30m, center=(-160,-80) -->
+    <model name="obs_04_landslide">
+      <static>true</static><pose>-160 -80 4 0 0 0.8</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>52 40 8</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>52 40 8</size></box></geometry>
+          <material><ambient>0.37 0.33 0.25 1</ambient><diffuse>0.47 0.41 0.31 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_04_boulder_A">
+      <static>true</static><pose>-130 -65 4.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><sphere><radius>4.5</radius></sphere></geometry></collision>
+        <visual name="v"><geometry><sphere><radius>4.5</radius></sphere></geometry>
+          <material><ambient>0.45 0.40 0.32 1</ambient><diffuse>0.55 0.47 0.37 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_04_boulder_B">
+      <static>true</static><pose>-145 -52 3.2 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><sphere><radius>3.2</radius></sphere></geometry></collision>
+        <visual name="v"><geometry><sphere><radius>3.2</radius></sphere></geometry>
+          <material><ambient>0.43 0.38 0.30 1</ambient><diffuse>0.53 0.45 0.35 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_04_boulder_C">
+      <static>true</static><pose>-175 -95 2.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><sphere><radius>2.5</radius></sphere></geometry></collision>
+        <visual name="v"><geometry><sphere><radius>2.5</radius></sphere></geometry>
+          <material><ambient>0.44 0.39 0.31 1</ambient><diffuse>0.54 0.46 0.36 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 05: Standing comms/water tower ──────────────── -->
+    <!-- r_collision=5m, center=(50,-30), height=40m
+         Deliberately narrow — drones fly around it at r=8m clearance -->
+    <model name="obs_05_tower_shaft">
+      <static>true</static><pose>50 -30 20 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><cylinder><radius>3.0</radius><length>40</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>3.0</radius><length>40</length></cylinder></geometry>
+          <material><ambient>0.60 0.60 0.62 1</ambient><diffuse>0.70 0.70 0.72 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_05_crossarm">
+      <static>true</static><pose>50 -30 38 0 0 0</pose>
+      <link name="link">
+        <visual name="v"><geometry><box><size>12 1 1</size></box></geometry>
+          <material><ambient>0.55 0.55 0.57 1</ambient><diffuse>0.65 0.65 0.67 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_05_warning_light">
+      <static>true</static><pose>50 -30 41.5 0 0 0</pose>
+      <link name="link">
+        <visual name="v"><geometry><sphere><radius>1.2</radius></sphere></geometry>
+          <material><ambient>0.9 0.1 0.1 1</ambient><diffuse>1.0 0.0 0.0 1</diffuse><emissive>0.8 0.0 0.0 1</emissive></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 06: Factory ruin + chimney (FAR east) ────────── -->
+    <!-- r_collision=28m, center=(310,120) -->
+    <model name="obs_06_factory_main">
+      <static>true</static><pose>310 120 7 0 0 0.2</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>55 40 14</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>55 40 14</size></box></geometry>
+          <material><ambient>0.50 0.47 0.43 1</ambient><diffuse>0.58 0.54 0.49 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_06_roof_collapse">
+      <static>true</static><pose>327 108 10 0 0.25 0.2</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>22 18 6</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>22 18 6</size></box></geometry>
+          <material><ambient>0.46 0.43 0.39 1</ambient><diffuse>0.54 0.51 0.45 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_06_chimney">
+      <static>true</static><pose>295 140 18 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><cylinder><radius>3.5</radius><length>36</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>3.5</radius><length>36</length></cylinder></geometry>
+          <material><ambient>0.51 0.47 0.43 1</ambient><diffuse>0.59 0.55 0.49 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 07: Rubble field B (FAR NW) ─────────────────── -->
+    <!-- r_collision=20m, center=(-240,260) -->
+    <model name="obs_07_rubble_NW_A">
+      <static>true</static><pose>-240 260 2.5 0 0 0.5</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>32 25 5</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>32 25 5</size></box></geometry>
+          <material><ambient>0.43 0.37 0.28 1</ambient><diffuse>0.53 0.45 0.35 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_07_rubble_NW_B">
+      <static>true</static><pose>-220 275 1.5 0 0 -0.8</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>20 15 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>20 15 3</size></box></geometry>
+          <material><ambient>0.41 0.35 0.27 1</ambient><diffuse>0.51 0.43 0.33 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── OBSTACLE 08: Highway overpass (MID north) ────────────── -->
+    <!-- r_collision=12m, center=(180,280), deck at z=10m -->
+    <model name="obs_08_deck">
+      <static>true</static><pose>180 280 10 0 0 1.1</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>50 12 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>50 12 2</size></box></geometry>
+          <material><ambient>0.55 0.52 0.47 1</ambient><diffuse>0.63 0.59 0.54 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_08_pier_A">
+      <static>true</static><pose>167 292 5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>4 4 10</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>4 4 10</size></box></geometry>
+          <material><ambient>0.52 0.49 0.45 1</ambient><diffuse>0.60 0.57 0.51 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_08_pier_B">
+      <static>true</static><pose>193 268 5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>4 4 10</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>4 4 10</size></box></geometry>
+          <material><ambient>0.52 0.49 0.45 1</ambient><diffuse>0.60 0.57 0.51 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_08_crumble">
+      <static>true</static><pose>175 293 2 0 0.4 1.1</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>14 8 4</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>14 8 4</size></box></geometry>
+          <material><ambient>0.50 0.46 0.41 1</ambient><diffuse>0.58 0.54 0.47 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── Dry ravine / crack across y≈105 ──────────────────────── -->
+    <model name="ravine_bottom">
+      <static>true</static><pose>0 105 -1.5 0 0 0</pose>
+      <link name="link">
+        <visual name="v"><geometry><box><size>1000 20 3</size></box></geometry>
+          <material><ambient>0.29 0.26 0.19 1</ambient><diffuse>0.37 0.33 0.25 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="ravine_bank_S">
+      <static>true</static><pose>0 95 0.5 0 0.12 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>1000 6 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1000 6 3</size></box></geometry>
+          <material><ambient>0.35 0.29 0.22 1</ambient><diffuse>0.45 0.37 0.27 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="ravine_bank_N">
+      <static>true</static><pose>0 115 0.5 0 -0.12 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>1000 6 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1000 6 3</size></box></geometry>
+          <material><ambient>0.35 0.29 0.22 1</ambient><diffuse>0.45 0.37 0.27 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── PoI marker beacons (visual only) ─────────────────────── -->
+    <!-- Green = near/mid range; Orange = far (relay required) -->
+    <model name="poi_beacon_01">
+      <static>true</static><pose>80 120 1.5 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>1.2</radius><length>3.0</length></cylinder></geometry>
+        <material><ambient>0.1 0.8 0.1 1</ambient><diffuse>0.0 1.0 0.0 1</diffuse><emissive>0.0 0.4 0.0 1</emissive></material></visual></link>
+    </model>
+    <model name="poi_beacon_02">
+      <static>true</static><pose>200 -50 1.5 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>1.2</radius><length>3.0</length></cylinder></geometry>
+        <material><ambient>0.1 0.8 0.1 1</ambient><diffuse>0.0 1.0 0.0 1</diffuse><emissive>0.0 0.4 0.0 1</emissive></material></visual></link>
+    </model>
+    <model name="poi_beacon_03">
+      <static>true</static><pose>-100 200 1.5 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>1.2</radius><length>3.0</length></cylinder></geometry>
+        <material><ambient>0.1 0.8 0.1 1</ambient><diffuse>0.0 1.0 0.0 1</diffuse><emissive>0.0 0.4 0.0 1</emissive></material></visual></link>
+    </model>
+    <model name="poi_beacon_04">
+      <static>true</static><pose>150 300 1.5 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>1.2</radius><length>3.0</length></cylinder></geometry>
+        <material><ambient>0.8 0.5 0.0 1</ambient><diffuse>1.0 0.6 0.0 1</diffuse><emissive>0.4 0.2 0.0 1</emissive></material></visual></link>
+    </model>
+    <model name="poi_beacon_05">
+      <static>true</static><pose>-200 -150 1.5 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>1.2</radius><length>3.0</length></cylinder></geometry>
+        <material><ambient>0.8 0.5 0.0 1</ambient><diffuse>1.0 0.6 0.0 1</diffuse><emissive>0.4 0.2 0.0 1</emissive></material></visual></link>
+    </model>
+
+    <!-- ── GCS launch pad + antenna ─────────────────────────────── -->
+    <model name="gcs_pad">
+      <static>true</static><pose>0 0 0.1 0 0 0</pose>
+      <link name="link">
+        <visual name="pad"><geometry><cylinder><radius>8.0</radius><length>0.2</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.85 1</ambient><diffuse>0.1 0.1 1.0 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="gcs_antenna">
+      <static>true</static><pose>2.5 2.5 2 0 0 0</pose>
+      <link name="link">
+        <visual name="v"><geometry><cylinder><radius>0.15</radius><length>4.0</length></cylinder></geometry>
+          <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ── Geofence markers — ±500m corners (unchanged) ─────────── -->
     <model name="geofence_marker_ne">
-      <static>true</static>
-      <pose>500 500 1 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
-          <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material>
-        </visual>
-      </link>
+      <static>true</static><pose>500 500 2 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><cylinder><radius>1.0</radius><length>4</length></cylinder></geometry>
+        <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse><emissive>0.3 0 0 1</emissive></material></visual></link>
     </model>
-
-    <!-- NW corner marker -->
     <model name="geofence_marker_nw">
-      <static>true</static>
-      <pose>-500 500 1 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
-          <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material>
-        </visual>
-      </link>
+      <static>true</static><pose>-500 500 2 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><cylinder><radius>1.0</radius><length>4</length></cylinder></geometry>
+        <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse><emissive>0.3 0 0 1</emissive></material></visual></link>
     </model>
-
-    <!-- SE corner marker -->
     <model name="geofence_marker_se">
-      <static>true</static>
-      <pose>500 -500 1 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
-          <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material>
-        </visual>
-      </link>
+      <static>true</static><pose>500 -500 2 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><cylinder><radius>1.0</radius><length>4</length></cylinder></geometry>
+        <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse><emissive>0.3 0 0 1</emissive></material></visual></link>
     </model>
-
-    <!-- SW corner marker -->
     <model name="geofence_marker_sw">
-      <static>true</static>
-      <pose>-500 -500 1 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
-          <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse></material>
-        </visual>
-      </link>
+      <static>true</static><pose>-500 -500 2 0 0 0</pose>
+      <link name="link"><visual name="visual"><geometry><cylinder><radius>1.0</radius><length>4</length></cylinder></geometry>
+        <material><ambient>1 0 0 1</ambient><diffuse>1 0 0 1</diffuse><emissive>0.3 0 0 1</emissive></material></visual></link>
     </model>
-
-    <!-- Static obstacle (building ruin) -->
-    <model name="obstacle_building_1">
-      <static>true</static>
-      <pose>100 50 5 0 0 0</pose>
-      <link name="link">
-        <collision name="collision">
-          <geometry><box><size>20 20 10</size></box></geometry>
-        </collision>
-        <visual name="visual">
-          <geometry><box><size>20 20 10</size></box></geometry>
-          <material><ambient>0.5 0.4 0.3 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material>
-        </visual>
-      </link>
+    <model name="geofence_mid_N">
+      <static>true</static><pose>0 500 1 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
+        <material><ambient>1 0.4 0 1</ambient><diffuse>1 0.4 0 1</diffuse></material></visual></link>
+    </model>
+    <model name="geofence_mid_S">
+      <static>true</static><pose>0 -500 1 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
+        <material><ambient>1 0.4 0 1</ambient><diffuse>1 0.4 0 1</diffuse></material></visual></link>
+    </model>
+    <model name="geofence_mid_E">
+      <static>true</static><pose>500 0 1 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
+        <material><ambient>1 0.4 0 1</ambient><diffuse>1 0.4 0 1</diffuse></material></visual></link>
+    </model>
+    <model name="geofence_mid_W">
+      <static>true</static><pose>-500 0 1 0 0 0</pose>
+      <link name="link"><visual name="v"><geometry><cylinder><radius>0.5</radius><length>2</length></cylinder></geometry>
+        <material><ambient>1 0.4 0 1</ambient><diffuse>1 0.4 0 1</diffuse></material></visual></link>
     </model>
 
   </world>

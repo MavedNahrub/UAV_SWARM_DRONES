@@ -22,13 +22,27 @@ def generate_launch_description():
     scenario_arg = DeclareLaunchArgument('scenario',
                                           default_value='scenarios/scenario_basic.yaml',
                                           description='Scenario YAML path')
+    log_path_arg = DeclareLaunchArgument('log_path',
+                                         default_value='logs/run.jsonl',
+                                         description='Path to output JSONL log file')
 
     uav_ids = LaunchConfiguration('uav_ids')
     scenario = LaunchConfiguration('scenario')
+    log_path = LaunchConfiguration('log_path')
 
     return LaunchDescription([
         uav_ids_arg,
         scenario_arg,
+        log_path_arg,
+
+        # Scenario orchestrator — timed event dispatcher
+        Node(
+            package='mission_bringup',
+            executable='scenario_orchestrator_node',
+            name='scenario_orchestrator_node',
+            parameters=[{'scenario': scenario, 'uav_ids': uav_ids}],
+            output='screen',
+        ),
 
         # Comm gateway — degraded mesh network simulator
         Node(
@@ -62,7 +76,7 @@ def generate_launch_description():
             package='mission_logger',
             executable='mission_logger_node',
             name='mission_logger_node',
-            parameters=[{'out_path': 'logs/run.jsonl', 'uav_ids': uav_ids}],
+            parameters=[{'out_path': log_path, 'uav_ids': uav_ids, 'scenario': scenario}],
             output='screen',
         ),
 
